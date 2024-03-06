@@ -17,6 +17,7 @@ include_directories(external/imgui)
 include_directories(external/tinygltf)
 include_directories(external/ktx/include)
 include_directories(external/ktx/other_include)
+include_directories(src)
 
 # if(WIN32)
 #     find_library(Vulkan_LIBRARY NAMES vulkan-1 PATHS ${CMAKE_SOURCE_DIR}/libs/vulkan)
@@ -26,8 +27,8 @@ include_directories(external/ktx/other_include)
 # endif()
 
 # 不知道是否需要用到  \" 是转义
-add_definitions(-ASSETS_DIR=\"${CMAKE_SOURCE_DIR}/assets/\")
-add_definitions(-SHADERS_DIR=\"${CMAKE_SOURCE_DIR}/shaders/\")
+# add_definitions(-ASSETS_DIR=\"${CMAKE_SOURCE_DIR}/assets/\")
+# add_definitions(-SHADERS_DIR=\"${CMAKE_SOURCE_DIR}/shaders/\")
 
 set(LIBS_PATH ${PROJECT_SOURCE_DIR}/libs)
 
