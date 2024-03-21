@@ -4,7 +4,8 @@ set(CMAKE_CXX_STANDARD 17)      #c++17版本
 set(NAME Lemon_Render)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-project(${NAME} LANGUAGES CXX)
+# adding C，不然ktx库找不到编译语言
+project(${NAME} LANGUAGES C CXX)
 
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/target/lib)    # 设置默认存放静态库的位置
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/target/bin)    # 设置默认存放动态库的位置(和exe放在一起，这样exe运行时可以找到)
@@ -17,6 +18,7 @@ include_directories(external/imgui)
 include_directories(external/tinygltf)
 include_directories(external/ktx/include)
 include_directories(external/ktx/other_include)
+include_directories(external/vulkan)
 include_directories(src)
 
 # if(WIN32)
@@ -26,11 +28,13 @@ include_directories(src)
 #     endif()
 # endif()
 
-# 不知道是否需要用到  \" 是转义
+# 不知道是否需要用到；\" 是转义
 # add_definitions(-ASSETS_DIR=\"${CMAKE_SOURCE_DIR}/assets/\")
 # add_definitions(-SHADERS_DIR=\"${CMAKE_SOURCE_DIR}/shaders/\")
 
 set(LIBS_PATH ${PROJECT_SOURCE_DIR}/libs)
+
+set(CMAKE_EXE_LINKER_FLAGS /NODEFAULTLIB:"MSVCRT.lib")
 
 # 非系统/环境变量中的动态库，需要提前指定dll文件的位置
 # target_link_directories(${NAME} PUBLIC ${LIBS_PATH})      # 链接vulkan-1.lib
