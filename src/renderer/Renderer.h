@@ -2,7 +2,7 @@
 #define RENDER_BASE_H
 
 #define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>//定义上面的宏后，会自动include vulkan.h
+#include <GLFW/glfw3.h>//automatically include vulkan.h
 
 #include <iostream>
 #include <cstdlib>
@@ -18,15 +18,20 @@
 #include <chrono>
 #include <unordered_map>
 
-#define GLM_FORCE_RADIANS                 // 确保glm中类似rotate的函数使用的都是radians而不是角度
-#define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES// 强制glm使用内存对齐要求，解决如vec2等类型带来的问题（解决不了自定义类型的对齐，因此最好还是显式对齐）
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE       // vulkan中depth范围为0到1，而不是opengl中的-1到1
+#define GLM_FORCE_RADIANS                 // force using radians
+#define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES// force using align
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE       // depth(0,1) in vulkan
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/hash.hpp>
 
 #include "base/Camera.h"
+#include "base/initializer.h"
+#include "base/VulkanTools.h"
+#include "base/VulkanBuffer.h"
+#include "base/VulkanDevice.h"
+#include "base/VulkanTexture.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -49,13 +54,13 @@ const int SCR_HEIGHT = 800;
 const std::string MODEL_PATH   = "../../../assets/models/viking_room/viking_room.obj";
 const std::string TEXTURE_PATH = "../../../assets/models/viking_room/viking_room.png";
 
-const int MAX_FRAMES_IN_FLIGHT = 2;// 最大同时处理的frameBuffer数量
+const int MAX_FRAMES_IN_FLIGHT = 2;
 
 void processInput(GLFWwindow* window);
 
 struct QueueFamilyIndices {
-    std::optional<uint32_t> graphicsFamily;// 图形操作
-    std::optional<uint32_t> presentFamily; // 画到屏幕上的操作
+    std::optional<uint32_t> graphicsFamily;
+    std::optional<uint32_t> presentFamily;
 
     bool isComplete() {
         return graphicsFamily.has_value() && presentFamily.has_value();
@@ -73,13 +78,10 @@ struct Vertex {
     glm::vec3 color;
     glm::vec2 texCoord;
 
-    // 数据怎么分成一个个顶点
-    static VkVertexInputBindingDescription getBindingDescription();
-
-    // 顶点数据怎么分成具体哪些部分(VertexAttributePointer)
+    static VkVertexInputBindingDescription                  getBindingDescription();
     static std::array<VkVertexInputAttributeDescription, 3> getAttributeDescriptions();
 
-    // unordered map使用的equality test函数
+    // used by unordered map
     bool operator==(const Vertex& other) const {
         return position == other.position && color == other.color && texCoord == other.texCoord;
     }
@@ -94,18 +96,13 @@ struct ShaderData {
     alignas(16) glm::mat4 projection;
 };
 
-// 检测需要的校验层是否可用
 bool checkValidationLayerSupport();
-
-// 检验要求的设备拓展是否可用（与上面是两种方法，都可行）
 bool checkDeviceExtensionSupport(VkPhysicalDevice device);
 
 // 因为是拓展，所以vkCreateDebugUtilsMessengerEXT没有自动加载，需要我们自己写好代理函数后将其装载进vulkan
 // PFN: pointer to function，vkGetInstanceProcAddr从实例中获取后面名字的函数的地址，并装载到func上
 VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger);
-
-// destroy debug messenger的函数同上
-void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator);
+void     DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator);
 
 // unordered map使用的hash函数，结合结构体的内容来创建一个哈希函数
 namespace std {
@@ -120,40 +117,37 @@ namespace std {
     };
 }// namespace std
 
-// //注意对齐要求(mat4的大小为 4byte*(4行*4列) = 64byte)，使用c++11标准的alignas来保证对齐
-// //比较好的做法：全都显示对齐内存
-// struct ShaderData {
-// 	//glm::vec2 foo;		//vec2大小为8byte，导致后面的mat的offset都不为16的整数倍
-// 	alignas(16) glm::mat4 model;
-// 	alignas(16) glm::mat4 view;
-// 	alignas(16) glm::mat4 projection;
-// };
-
-// 所有renderer的基础属性及方法
 class Renderer {
 public:
     void run() {
         initWindow();
-        compileShader();// 程序运行时自动compile shader
+        compileShader();
         initVulkan();
         mainLoop();
         cleanup();
     }
 
+    Renderer() = default;
+
 protected:
-    GLFWwindow*                  window;
-    VkInstance                   instance;
-    VkDebugUtilsMessengerEXT     debugMessenger;// 用于调用回调函数
-    VkPhysicalDevice             physicalDevice = VK_NULL_HANDLE;
-    VkDevice                     device;         // logical device
-    VkQueue                      graphicsQueue;  // to handle the graphics queue
-    VkSurfaceKHR                 surface;        // 窗口对象
-    VkQueue                      presentQueue;   // to handle the presentation queue
-    VkSwapchainKHR               swapChain;      // 交换链
-    std::vector<VkImage>         swapChainImages;// 交换链中的图像
-    VkFormat                     swapChainImageFormat;
-    VkExtent2D                   swapChainExtent;// 画面长宽
-    std::vector<VkImageView>     swapChainImageViews;
+    // LR::VulkanDevice device;
+
+    VkPhysicalDevice physicalDevice;
+    VkDevice         device;
+
+    GLFWwindow*              window;
+    VkInstance               instance;
+    VkDebugUtilsMessengerEXT debugMessenger;// 用于调用回调函数
+    VkQueue                  graphicsQueue; // to handle the graphics queue
+    VkQueue                  presentQueue;  // to handle the presentation queue
+    VkSurfaceKHR             surface;       // 窗口对象
+
+    VkSwapchainKHR           swapChain;      // 交换链
+    std::vector<VkImage>     swapChainImages;// 交换链中的图像
+    VkFormat                 swapChainImageFormat;
+    VkExtent2D               swapChainExtent;// 画面长宽
+    std::vector<VkImageView> swapChainImageViews;
+
     VkRenderPass                 renderPass;
     VkPipelineLayout             pipelineLayout;
     VkPipeline                   graphicsPipeline;

@@ -8,7 +8,7 @@ namespace LR {
         return result;
     }
 
-    void Texture::updateDescriptor() {
+    void Texture::updateDescriptorInfo() {
         descriptorInfo.sampler     = sampler;
         descriptorInfo.imageView   = view;
         descriptorInfo.imageLayout = imageLayout;
@@ -266,7 +266,7 @@ namespace LR {
         VK_CHECK(vkCreateImageView(device->logicalDevice, &viewCreateInfo, nullptr, &view));
 
         // After getting view, desciptorinfo, sampler all done, update descriptorInfo
-        updateDescriptor();
+        updateDescriptorInfo();
 
         // delete resources
         ktxTexture_Destroy(ktxTexture);
@@ -441,7 +441,7 @@ namespace LR {
         VK_CHECK(vkCreateImageView(device->logicalDevice, &viewCreateInfo, nullptr, &view));
 
         // Update descriptor image info member that can be used for setting up descriptor sets
-        updateDescriptor();
+        updateDescriptorInfo();
     }
 
     /**
@@ -617,7 +617,7 @@ namespace LR {
         vkFreeMemory(device->logicalDevice, stagingMemory, nullptr);
 
         // Update descriptor image info member that can be used for setting up descriptor sets
-        updateDescriptor();
+        updateDescriptorInfo();
     }
 
     /**
@@ -799,7 +799,7 @@ namespace LR {
         vkFreeMemory(device->logicalDevice, stagingMemory, nullptr);
 
         // Update descriptor image info member that can be used for setting up descriptor sets
-        updateDescriptor();
+        updateDescriptorInfo();
     }
 
 }// namespace LR

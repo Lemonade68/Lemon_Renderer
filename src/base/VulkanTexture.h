@@ -31,7 +31,7 @@ namespace LR {
 
     public:
         ktxResult loadKTXFile(std::string filename, ktxTexture** target);
-        void      updateDescriptor();
+        void      updateDescriptorInfo();
         void      destroy();
     };
 
