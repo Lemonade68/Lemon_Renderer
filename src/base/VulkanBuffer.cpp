@@ -12,7 +12,7 @@ namespace LR {
     *
     * @retval VkResult of the buffer mapping call
     */
-    VkResult Buffer::map(VkDeviceSize size, VkDeviceSize offset) {
+    VkResult VulkanBuffer::map(VkDeviceSize size, VkDeviceSize offset) {
         return vkMapMemory(device, memory, offset, size, 0, &mapped);
     }
 
@@ -21,7 +21,7 @@ namespace LR {
     *
     * @note Does not return a result as vkUnmapMemory can't fail
     */
-    void Buffer::unmap() {
+    void VulkanBuffer::unmap() {
         if (mapped) {
             vkUnmapMemory(device, memory);
             mapped = nullptr;
@@ -35,7 +35,7 @@ namespace LR {
     *
     * @retval VkResult of the bindBufferMemory call
     */
-    VkResult Buffer::bind(VkDeviceSize offset) {
+    VkResult VulkanBuffer::bind(VkDeviceSize offset) {
         return vkBindBufferMemory(device, buffer, memory, offset);
     }
 
@@ -45,7 +45,7 @@ namespace LR {
     * @param range (Optional) Size of the memory range of the descriptor
 	* @param offset (Optional) Byte offset from beginning
     */
-    void Buffer::setUpDescriptorInfo(VkDeviceSize range, VkDeviceSize offset) {
+    void VulkanBuffer::setUpDescriptorInfo(VkDeviceSize range, VkDeviceSize offset) {
         descriptorInfo.buffer = buffer;
         descriptorInfo.offset = offset;
         descriptorInfo.range  = range;
@@ -57,7 +57,7 @@ namespace LR {
     * @param data Pointer to the data to copy
 	* @param size Size of the data to copy in machine units
     */
-    void Buffer::copyFrom(void* data, VkDeviceSize size) {
+    void VulkanBuffer::copyFrom(void* data, VkDeviceSize size) {
         assert(mapped && "Buffer hasn't been mapped!");
         memcpy(mapped, data, size);
     }
@@ -65,7 +65,7 @@ namespace LR {
     /**
     * @brief Release all Vulkan resources held by this buffer
     */
-    void Buffer::destroy(){
+    void VulkanBuffer::destroy(){
         if(buffer)
             vkDestroyBuffer(device, buffer, nullptr);
         if(memory)
@@ -82,7 +82,7 @@ namespace LR {
 	*
 	* @retval VkResult of the flush call
 	*/
-	VkResult Buffer::flush(VkDeviceSize size, VkDeviceSize offset) {
+	VkResult VulkanBuffer::flush(VkDeviceSize size, VkDeviceSize offset) {
 		VkMappedMemoryRange mappedRange{VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
 		mappedRange.memory = memory;
 		mappedRange.offset = offset;
@@ -100,7 +100,7 @@ namespace LR {
 	*
 	* @retval VkResult of the invalidate call
 	*/
-	VkResult Buffer::invalidate(VkDeviceSize size, VkDeviceSize offset) {
+	VkResult VulkanBuffer::invalidate(VkDeviceSize size, VkDeviceSize offset) {
 		VkMappedMemoryRange mappedRange{VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
 		mappedRange.memory = memory;
 		mappedRange.offset = offset;

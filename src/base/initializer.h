@@ -25,14 +25,14 @@ namespace initializers {
     }
 
     inline VkDeviceQueueCreateInfo deviceQueueCreateInfo(
-        uint32_t queueFamilyIndex,
-        uint32_t queueCount,
-        const float* pQueuePriorities){
-            VkDeviceQueueCreateInfo queueInfo{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
-            queueInfo.queueFamilyIndex = queueFamilyIndex;
-            queueInfo.queueCount       = queueCount;
-            queueInfo.pQueuePriorities = pQueuePriorities;
-            return queueInfo;
+        uint32_t     queueFamilyIndex,
+        uint32_t     queueCount,
+        const float* pQueuePriorities) {
+        VkDeviceQueueCreateInfo queueInfo{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
+        queueInfo.queueFamilyIndex = queueFamilyIndex;
+        queueInfo.queueCount       = queueCount;
+        queueInfo.pQueuePriorities = pQueuePriorities;
+        return queueInfo;
     }
 
     inline VkCommandBufferAllocateInfo commandBufferAllocateInfo(
@@ -152,11 +152,15 @@ namespace initializers {
     }
 
     inline VkViewport viewport(
+        float x,
+        float y,
         float width,
         float height,
         float minDepth,
         float maxDepth) {
         VkViewport viewport{};
+        viewport.x        = x;
+        viewport.y        = y;
         viewport.width    = width;
         viewport.height   = height;
         viewport.minDepth = minDepth;
@@ -259,11 +263,15 @@ namespace initializers {
 
     inline VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo(
         const VkDescriptorSetLayout* pSetLayouts,
-        uint32_t                     setLayoutCount = 1) {
+        uint32_t                     setLayoutCount         = 1,
+        uint32_t                     pushConstantRangeCount = 0,
+        VkPushConstantRange*         pPushConstantRanges    = nullptr) {
         VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo{};
-        pipelineLayoutCreateInfo.sType          = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        pipelineLayoutCreateInfo.setLayoutCount = setLayoutCount;
-        pipelineLayoutCreateInfo.pSetLayouts    = pSetLayouts;
+        pipelineLayoutCreateInfo.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        pipelineLayoutCreateInfo.setLayoutCount         = setLayoutCount;
+        pipelineLayoutCreateInfo.pSetLayouts            = pSetLayouts;
+        pipelineLayoutCreateInfo.pushConstantRangeCount = pushConstantRangeCount;
+        pipelineLayoutCreateInfo.pPushConstantRanges    = pPushConstantRanges;
         return pipelineLayoutCreateInfo;
     }
 
@@ -377,7 +385,7 @@ namespace initializers {
         pipelineInputAssemblyStateCreateInfo.sType                  = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
         pipelineInputAssemblyStateCreateInfo.topology               = topology;
         pipelineInputAssemblyStateCreateInfo.flags                  = flags;
-        pipelineInputAssemblyStateCreateInfo.primitiveRestartEnable = primitiveRestartEnable;
+        pipelineInputAssemblyStateCreateInfo.primitiveRestartEnable = primitiveRestartEnable;//针对_STRIP模式，用于打断复用
         return pipelineInputAssemblyStateCreateInfo;
     }
 
@@ -387,13 +395,17 @@ namespace initializers {
         VkFrontFace                             frontFace,
         VkPipelineRasterizationStateCreateFlags flags = 0) {
         VkPipelineRasterizationStateCreateInfo pipelineRasterizationStateCreateInfo{};
-        pipelineRasterizationStateCreateInfo.sType            = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-        pipelineRasterizationStateCreateInfo.polygonMode      = polygonMode;
-        pipelineRasterizationStateCreateInfo.cullMode         = cullMode;
-        pipelineRasterizationStateCreateInfo.frontFace        = frontFace;
-        pipelineRasterizationStateCreateInfo.flags            = flags;
-        pipelineRasterizationStateCreateInfo.depthClampEnable = VK_FALSE;
-        pipelineRasterizationStateCreateInfo.lineWidth        = 1.0f;
+        pipelineRasterizationStateCreateInfo.sType                   = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+        pipelineRasterizationStateCreateInfo.polygonMode             = polygonMode;//面模式/线模式/点模式
+        pipelineRasterizationStateCreateInfo.cullMode                = cullMode;   //cull the back/front face，与openGL相同，与顶点顺序相关
+        pipelineRasterizationStateCreateInfo.frontFace               = frontFace;  //定义顺时针还是逆时针为front face
+        pipelineRasterizationStateCreateInfo.flags                   = flags;
+        pipelineRasterizationStateCreateInfo.depthClampEnable        = VK_FALSE;//true时在近平面和远平面外的片段会被截断在平面上而不是丢弃它们，可能对shadowmap有用
+        pipelineRasterizationStateCreateInfo.lineWidth               = 1.0f;
+        pipelineRasterizationStateCreateInfo.depthBiasEnable         = VK_FALSE;//自遮挡现象那个？加上bias来防止条纹
+        pipelineRasterizationStateCreateInfo.depthBiasConstantFactor = .0f;
+        pipelineRasterizationStateCreateInfo.depthBiasClamp          = .0f;
+        pipelineRasterizationStateCreateInfo.depthBiasSlopeFactor    = .0f;
         return pipelineRasterizationStateCreateInfo;
     }
 
@@ -401,8 +413,23 @@ namespace initializers {
         VkColorComponentFlags colorWriteMask,
         VkBool32              blendEnable) {
         VkPipelineColorBlendAttachmentState pipelineColorBlendAttachmentState{};
-        pipelineColorBlendAttachmentState.colorWriteMask = colorWriteMask;
+        pipelineColorBlendAttachmentState.colorWriteMask = colorWriteMask;//掩码，最后和它相与来确定哪些通道可以通过(全1则为四个通道都可以通过)
         pipelineColorBlendAttachmentState.blendEnable    = blendEnable;
+
+        // pipelineColorBlendAttachmentState.srcColorBlendFactor = VK_BLEND_FACTOR_ONE; // Optional
+        // pipelineColorBlendAttachmentState.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;// Optional
+        // pipelineColorBlendAttachmentState.colorBlendOp        = VK_BLEND_OP_ADD;     // Optional（blend使用的operator）
+        // pipelineColorBlendAttachmentState.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE; // Optional
+        // pipelineColorBlendAttachmentState.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;// Optional
+        // pipelineColorBlendAttachmentState.alphaBlendOp        = VK_BLEND_OP_ADD;     // Optional（a通道使用的operator）
+        //下面是常规的考虑透明度的实现：
+        // pipelineColorBlendAttachmentState.blendEnable         = VK_TRUE;
+        // pipelineColorBlendAttachmentState.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+        // pipelineColorBlendAttachmentState.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        // pipelineColorBlendAttachmentState.colorBlendOp        = VK_BLEND_OP_ADD;
+        // pipelineColorBlendAttachmentState.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        // pipelineColorBlendAttachmentState.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+        // pipelineColorBlendAttachmentState.alphaBlendOp        = VK_BLEND_OP_ADD;
         return pipelineColorBlendAttachmentState;
     }
 
@@ -410,9 +437,15 @@ namespace initializers {
         uint32_t                                   attachmentCount,
         const VkPipelineColorBlendAttachmentState* pAttachments) {
         VkPipelineColorBlendStateCreateInfo pipelineColorBlendStateCreateInfo{};
-        pipelineColorBlendStateCreateInfo.sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-        pipelineColorBlendStateCreateInfo.attachmentCount = attachmentCount;
-        pipelineColorBlendStateCreateInfo.pAttachments    = pAttachments;
+        pipelineColorBlendStateCreateInfo.sType             = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+        pipelineColorBlendStateCreateInfo.attachmentCount   = attachmentCount;
+        pipelineColorBlendStateCreateInfo.pAttachments      = pAttachments;
+        pipelineColorBlendStateCreateInfo.logicOpEnable     = VK_FALSE;        //设置成true后将会使上面perframebuffer的全部无效化(？)
+        pipelineColorBlendStateCreateInfo.logicOp           = VK_LOGIC_OP_COPY;// Optional
+        pipelineColorBlendStateCreateInfo.blendConstants[0] = 0.0f;            // Optional
+        pipelineColorBlendStateCreateInfo.blendConstants[1] = 0.0f;            // Optional
+        pipelineColorBlendStateCreateInfo.blendConstants[2] = 0.0f;            // Optional
+        pipelineColorBlendStateCreateInfo.blendConstants[3] = 0.0f;            // Optional
         return pipelineColorBlendStateCreateInfo;
     }
 
@@ -421,11 +454,15 @@ namespace initializers {
         VkBool32    depthWriteEnable,
         VkCompareOp depthCompareOp) {
         VkPipelineDepthStencilStateCreateInfo pipelineDepthStencilStateCreateInfo{};
-        pipelineDepthStencilStateCreateInfo.sType            = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-        pipelineDepthStencilStateCreateInfo.depthTestEnable  = depthTestEnable;
-        pipelineDepthStencilStateCreateInfo.depthWriteEnable = depthWriteEnable;
-        pipelineDepthStencilStateCreateInfo.depthCompareOp   = depthCompareOp;
-        pipelineDepthStencilStateCreateInfo.back.compareOp   = VK_COMPARE_OP_ALWAYS;
+        pipelineDepthStencilStateCreateInfo.sType                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+        pipelineDepthStencilStateCreateInfo.depthTestEnable       = depthTestEnable; //是否开启深度测试来丢弃被挡住的fragments
+        pipelineDepthStencilStateCreateInfo.depthWriteEnable      = depthWriteEnable;//通过测试后是否写入为新的深度
+        pipelineDepthStencilStateCreateInfo.depthCompareOp        = depthCompareOp;  //lower depth = closer
+        pipelineDepthStencilStateCreateInfo.back.compareOp        = VK_COMPARE_OP_ALWAYS;
+        pipelineDepthStencilStateCreateInfo.depthBoundsTestEnable = VK_FALSE;//只关心特定深度内的fragments
+        pipelineDepthStencilStateCreateInfo.minDepthBounds        = 0.0f;    // Optional
+        pipelineDepthStencilStateCreateInfo.maxDepthBounds        = 1.0f;    // Optional
+        pipelineDepthStencilStateCreateInfo.stencilTestEnable     = VK_FALSE;
         return pipelineDepthStencilStateCreateInfo;
     }
 
@@ -489,7 +526,9 @@ namespace initializers {
         pipelineCreateInfo.sType              = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
         pipelineCreateInfo.layout             = layout;
         pipelineCreateInfo.renderPass         = renderPass;
+        pipelineCreateInfo.subpass            = 0;
         pipelineCreateInfo.flags              = flags;
+        // 从已有的Pipeline中脱离创建新的pipeline
         pipelineCreateInfo.basePipelineIndex  = -1;
         pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
         return pipelineCreateInfo;

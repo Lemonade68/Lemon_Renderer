@@ -26,7 +26,7 @@ namespace LR {
         vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extCount, nullptr);
         if (extCount > 0) {
             std::vector<VkExtensionProperties> extensions(extCount);
-            if (vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extCount, extensions.data())) {
+            if (vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extCount, &extensions.front()) == VK_SUCCESS) {
                 for (auto extension : extensions)
                     supportedExtensions.push_back(extension.extensionName);
             }
@@ -93,7 +93,7 @@ namespace LR {
     }
 
     /**
-    * @note queue是在这一步创建好的（与logicalDevice一起）
+    * @note queue和command pool是在这一步创建好的（与logicalDevice一起）
     */
     VkResult VulkanDevice::createLogicalDevice(VkPhysicalDeviceFeatures enabledFeatures,
                                                std::vector<const char*> enabledExtensions,
@@ -126,7 +126,7 @@ namespace LR {
             // 等于的话就不用加了
         }
 
-        if (requestedQueueTypes & VK_QUEUE_COMPUTE_BIT) {
+        if (requestedQueueTypes & VK_QUEUE_TRANSFER_BIT) {
             queueFamilyIndices.compute = getQueueFamilyIndex(VK_QUEUE_TRANSFER_BIT);
             if ((queueFamilyIndices.transfer != queueFamilyIndices.graphics) && (queueFamilyIndices.transfer != queueFamilyIndices.compute)) {
                 VkDeviceQueueCreateInfo queueCI{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
@@ -245,7 +245,7 @@ namespace LR {
     }
 
     // 使用VulkanBuffer的版本
-    VkResult VulkanDevice::createBuffer(VkBufferUsageFlags usageFlags, VkMemoryPropertyFlags memoryPropertyFlags, LR::Buffer* buffer, VkDeviceSize size, void* data) {
+    VkResult VulkanDevice::createBuffer(VkBufferUsageFlags usageFlags, VkMemoryPropertyFlags memoryPropertyFlags, LR::VulkanBuffer* buffer, VkDeviceSize size, void* data) {
         buffer->device = logicalDevice;
 
         // Create the buffer handle
@@ -300,7 +300,7 @@ namespace LR {
 	*
 	* @note Source and destination pointers must have the appropriate transfer usage flags set (TRANSFER_SRC / TRANSFER_DST)
 	*/
-    void VulkanDevice::copyBuffer(LR::Buffer* src, LR::Buffer* dst, VkQueue queue, VkBufferCopy* copyRegion) {
+    void VulkanDevice::copyBuffer(LR::VulkanBuffer* src, LR::VulkanBuffer* dst, VkQueue queue, VkBufferCopy* copyRegion) {
         // 拷贝整个或部分，因此小于等于
         assert(dst->size <= src->size);
         assert(src->buffer);

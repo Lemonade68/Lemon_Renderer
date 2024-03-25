@@ -38,6 +38,8 @@ namespace LR {
             uint32_t graphics;
             uint32_t compute;
             uint32_t transfer;
+
+            
         } queueFamilyIndices;
 
         // functions
@@ -59,11 +61,11 @@ namespace LR {
 
         VkResult createBuffer(VkBufferUsageFlags    usageFlags,
                               VkMemoryPropertyFlags memoryPropertyFlags,
-                              LR::Buffer*           buffer,
+                              LR::VulkanBuffer*           buffer,
                               VkDeviceSize          size,
                               void*                 data = nullptr);
 
-        void copyBuffer(LR::Buffer* src, LR::Buffer* dst, VkQueue queue, VkBufferCopy* copyRegion = nullptr);
+        void copyBuffer(LR::VulkanBuffer* src, LR::VulkanBuffer* dst, VkQueue queue, VkBufferCopy* copyRegion = nullptr);
 
         VkCommandPool   createCommandPool(uint32_t queueFamilyIndex, VkCommandPoolCreateFlags createFlags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
         VkCommandBuffer createCommandBuffer(VkCommandBufferLevel level, bool begin = false);

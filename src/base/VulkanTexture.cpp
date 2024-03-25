@@ -66,7 +66,7 @@ namespace LR {
         VkCommandBuffer copyCmd = device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
 
         if (useStaging) {
-            LR::Buffer stagingBuffer;
+            LR::VulkanBuffer stagingBuffer;
             device->createBuffer(VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                                  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                                  &stagingBuffer,

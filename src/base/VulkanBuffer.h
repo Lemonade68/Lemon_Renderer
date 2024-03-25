@@ -5,7 +5,7 @@
 
 namespace LR {
 
-    struct Buffer {
+    struct VulkanBuffer {
         // members
         VkDevice               device;
         /** @brief 用于在write descriptor中传递buffer信息，实际的descriptor声明在renderer里 */

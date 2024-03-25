@@ -10,11 +10,10 @@ endif()
 find_library(glfw_LIBRARY NAMES glfw3 PATHS ${LIBS_PATH}/glfw)
 
 # 获取当前目录以及当前目录子目录下的所有.cpp文件，存在变量SOURCE_FILE中
-file(GLOB_RECURSE SOURCE_FILE "*.h" "*.cpp")
-file(GLOB_RECURSE HEADER_FILE "*.h")
+file(GLOB_RECURSE SOURCE_FILE "*.h" "*.cpp" "*.hpp")
+file(GLOB_RECURSE HEADER_FILE "*.h" "*.hpp")
 
-# 这样有问题
-
+# 这样有问题(vulkan_samples里面这样写的)
 # # ktx lib
 # set(KTX_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../external/ktx)
 # set(KTX_SOURCES
