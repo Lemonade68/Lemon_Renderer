@@ -70,21 +70,35 @@ namespace LR {
 
         // We want to get a format that best suits our needs, so we try to get one from a set of preferred formats
         // Initialize the format to the first one returned by the implementation in case we can't find one of the preffered formats
-        VkSurfaceFormatKHR    selectedFormat        = surfaceFormats[0];
-        std::vector<VkFormat> preferredImageFormats = {
-            VK_FORMAT_B8G8R8A8_UNORM,
-            VK_FORMAT_R8G8B8A8_UNORM,
-            VK_FORMAT_A8B8G8R8_UNORM_PACK32};
+        VkSurfaceFormatKHR selectedFormat = surfaceFormats[0];
+        
+        // 1. vulkan_samples里面的选择
+        // std::vector<VkFormat> preferredImageFormats = {
+        //     VK_FORMAT_B8G8R8_SRGB,
+        //     VK_FORMAT_R8G8B8A8_UNORM,
+        //     VK_FORMAT_B8G8R8A8_UNORM,
+        //     VK_FORMAT_A8B8G8R8_UNORM_PACK32};
 
-        for (auto& availableFormat : surfaceFormats) {
-            if (std::find(preferredImageFormats.begin(), preferredImageFormats.end(), availableFormat.format) != preferredImageFormats.end()) {
+        // for (auto& availableFormat : surfaceFormats) {
+        //     if (std::find(preferredImageFormats.begin(), preferredImageFormats.end(), availableFormat.format) != preferredImageFormats.end()) {
+        //         selectedFormat = availableFormat;
+        //         break;
+        //     }
+        // }
+
+
+        // 2. tutorial里的选择
+        for(auto& availableFormat : surfaceFormats){
+            if((availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB) && (availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR))
                 selectedFormat = availableFormat;
-                break;
-            }
         }
 
         colorFormat = selectedFormat.format;
         colorSpace  = selectedFormat.colorSpace;
+
+        // colorFormat = VK_FORMAT_B8G8R8A8_SRGB;  // 亮的那个
+        // colorFormat = VK_FORMAT_B8G8R8A8_UNORM; // 暗的那个
+        // colorSpace  = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
     }
 
     /**

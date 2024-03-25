@@ -219,12 +219,12 @@ private:
     static std::vector<char> readFile(const std::string& filename);               // 读入binary文件的helper function
     VkCommandBuffer          beginSingleTimeCommands();                           // 分配并开始单次的cmd录制
     void                     endSingleTimeCommands(VkCommandBuffer commandBuffer);// 结束并提交与释放（因为是单次）
+    bool                     hasStencilComponent(VkFormat format);
+    void                     loadModel();
+    VkFormat                 findDepthFormat();
     VkFormat                 findSupportedFormat(const std::vector<VkFormat>& candidates,
                                                  VkImageTiling                tiling,
                                                  VkFormatFeatureFlags         features);
-    VkFormat                 findDepthFormat();
-    bool                     hasStencilComponent(VkFormat format);
-    void                     loadModel();
 
     void           pickPhysicalCard();
     void           createInstance();
@@ -272,11 +272,12 @@ private:
                                 VkFormat           format,
                                 VkImageAspectFlags aspectFlags,
                                 uint32_t           mipLevels);
-    void        generateMipmaps(VkImage  image,
-                                VkFormat imageFormat,
-                                int32_t  texWidth,
-                                int32_t  texHeight,
-                                uint32_t mipLevels);
+
+    void generateMipmaps(VkImage  image,
+                         VkFormat imageFormat,
+                         int32_t  texWidth,
+                         int32_t  texHeight,
+                         uint32_t mipLevels);
 
     void drawFrame();
 

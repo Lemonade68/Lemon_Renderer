@@ -493,7 +493,7 @@ SwapChainSupportDetails Renderer::querySwapChainSupport(VkPhysicalDevice device)
 // 初始化swapchain数据，连接instance,device等，获取queue和format
 void Renderer::initSwapChain() {
     swapchain.connect(instance, physicalDevice, device);
-    swapchain.initSurfaceAndQueue(surface, window);
+    swapchain.initSurfaceAndQueue(surface, window);     // 里面有对format的选择，目前选择的是RGBA_SRGB(更亮)，RGBA_NORM的话会变暗
 }
 
 // 创建与重建swapChain对象
@@ -615,10 +615,9 @@ void Renderer::createGraphicsPipeline() {
     vkDestroyShaderModule(device, fragShaderModule, nullptr);
 }
 
-// 是pipeline的一个参数，定义了用到的attachments的数量和格式
 // specify how many color and depth buffers there will be,
 // how many samples to use for each of them,
-// and how their contents should be handled throughout the rendering operations
+// and how their contents should be handled throughout the rendering operations(就是常说的一个pass还是两个pass这种)
 void Renderer::createRenderPass() {
     //Attachment description
     VkAttachmentDescription colorAttachment{};
@@ -788,7 +787,7 @@ void Renderer::destoryCommandBuffers() {
 */
 void Renderer::recordCommandBuffers() {
     std::array<VkClearValue, 2> clearValues{};//包括两个attachments：color和depth
-    clearValues[0].color        = {{.2f, .2f, .2f, 1.0f}};
+    clearValues[0].color        = {{.1f, .1f, .1f, 1.0f}};
     clearValues[1].depthStencil = {1.0f, 0};
 
     VkRenderPassBeginInfo renderPassBeginInfo = LR::initializers::renderPassBeginInfo();
