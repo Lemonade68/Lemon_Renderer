@@ -197,13 +197,57 @@ private:
         return VK_FALSE;
     }
 
-    // run中的成员
-    void initWindow();   // initialize window configurations and inputs
-    void compileShader();// compile new shader file  (注意使用绝对路径！)
-    void initVulkan();   // preparation
-    void prepare();
-    void mainLoop();// receiving input & draw frames
-    void cleanup(); // destroy vkObjects & other resources
+    // initialize window configurations and inputs
+    void initWindow();
+
+    // compile new shader file  (注意使用绝对路径！)
+    void compileShader();
+
+    // initializations
+    void initVulkan() {
+        createInstance();     //创建实例（初始化vk library）
+        setupDebugMessenger();//初始化debug messenger
+        createSurface();
+        pickPhysicalCard();   //选择physical device
+        createLogicalDevice();//创建device来与上面进行interface
+        initSwapChain();      //初始化swap chain（connect以及queue/format设置）
+        createSyncObjects();
+    }
+
+    // preparations(common & unique)
+    void prepare() {
+        // correspond to VulkanExampleBase::prepare，基础设置
+        setupSwapChain();
+        createCommandPool();
+        createCommandBuffers();
+        createDepthResources();
+        createRenderPass();
+        createFramebuffers();
+
+        // correspond to VulkanExample::prepare，渲染不同的场景时的独特设置
+        loadModel();
+        createVertexBuffer();
+        createIndexBuffer();
+        createUniformBuffers();
+        createTextureImage();//image, view, sampler
+        setupDescriptors();
+        createGraphicsPipeline();
+        // createColorResources();//for multisample
+        recordCommandBuffers();
+    }
+
+    // receiving input & draw frames
+    void mainLoop() {
+        while (!glfwWindowShouldClose(window)) {
+            processInput(window);
+            glfwPollEvents();
+            drawFrame();
+        }
+        vkDeviceWaitIdle(device);//等待logical device结束运行所有操作
+    }
+
+    // destroy vkObjects & other resources
+    void cleanup();
 
     // functional funcs
     QueueFamilyIndices       findQueueFamilies(VkPhysicalDevice device);
