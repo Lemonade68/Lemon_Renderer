@@ -9,7 +9,7 @@
 uint32_t currentFrame = 0;//当前处理的frame（注意头文件中只声明，这样两个.cpp文件同时include该头文件时不会发生重复定义）
 float    currentTime = 0, lastTime = 0, deltaTime = 0;
 
-Camera camera = Camera::GetInstance();
+Camera& camera = Camera::GetInstance();
 
 // 会随着屏幕的改变而改变
 uint32_t SCR_WIDTH  = 1280;
@@ -138,47 +138,63 @@ void Renderer::mouseCallback(GLFWwindow* window, double xpos, double ypos) {
         if (camera.pitch < -89.f)
             camera.pitch = -89.f;
 
-        glm::vec3 front;
-        front.x = cos(glm::radians(camera.yaw)) * cos(glm::radians(camera.pitch));
-        front.y = sin(glm::radians(camera.pitch));
-        front.z = sin(glm::radians(camera.yaw)) * cos(glm::radians(camera.pitch));
+        if (camera.yaw > 180.f)
+            camera.yaw -= 360.f;
+        if (camera.yaw < -180.f)
+            camera.yaw += 360.f;
 
-        camera.cameraWorldCoords.back = glm::normalize(-front);
+        camera.changedView = true;
+
+        // glm::vec3 front;
+        // front.x = cos(glm::radians(camera.yaw)) * cos(glm::radians(camera.pitch));
+        // front.y = sin(glm::radians(camera.pitch));
+        // front.z = sin(glm::radians(camera.yaw)) * cos(glm::radians(camera.pitch));
+
+        // camera.cameraWorldCoords.back = glm::normalize(-front);
     }
 }
 
 void Renderer::scrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
     if (camera.enterCam) {
-        if (camera.fov_y >= 1.0f && camera.fov_y <= 100.0f)
+        if (camera.fov_y >= 20.0f && camera.fov_y <= 120.0f)
             camera.fov_y -= static_cast<float>(yoffset) * 1.5f;
-        if (camera.fov_y <= 1.0f)
-            camera.fov_y = 1.0f;
-        if (camera.fov_y >= 100.0f)
-            camera.fov_y = 100.0f;
-        camera.updatePerspectiveMatrix(camera.fov_y, camera.aspect_ratio, camera.zNear, camera.zFar);
+        if (camera.fov_y <= 20.0f)
+            camera.fov_y = 20.0f;
+        if (camera.fov_y >= 120.0f)
+            camera.fov_y = 120.0f;
+
+        camera.changedPerspect = true;
+        // camera.updatePerspectiveMatrix(camera.fov_y, camera.aspect_ratio, camera.zNear, camera.zFar);
     }
 }
 
 //GLFW并不会使用this指针来指代这个类，因此设置为static函数(不能调用this)
 void Renderer::framebufferResizeCallback(GLFWwindow* window, int width, int height) {
-    auto app                = reinterpret_cast<Renderer*>(glfwGetWindowUserPointer(window));
+    auto app = reinterpret_cast<Renderer*>(glfwGetWindowUserPointer(window));
     // app->framebufferResized = true;//显式设置为true(recreate swap chain那里也要调整)
     //添加这俩个可以让窗口在变化时也能跟着即使变化，glfw在resize时会暂停event loop，但是鼠标每移动一点都会调用这个call back，在这里添加从而达到实时改变的效果
     app->recreateSwapChain();//第一个用于recreate swap chain
     app->drawFrame();        //第二个用于实际的渲染
 }
 
+// void Renderer::keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+//     ImGui_ImplGlfw_KeyCallback(window, key, scancode, action, mods);
+// }
+
 void Renderer::initWindow() {
     glfwInit();                                  //激活glfw lib
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);//防止生成openGL context
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);   //允许更改窗口大小
-    window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Vulkan", nullptr, nullptr);
+    window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Lemon_Renderer", nullptr, nullptr);
     glfwSetWindowUserPointer(window, this);                           //该函数可以存出任意一个指针，解决this问题
     glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);//Resize了就会调用framebufferResizeCallback函数
 
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
     glfwSetCursorPosCallback(window, mouseCallback);
     glfwSetScrollCallback(window, scrollCallback);
+
+    // key callback for imgui
+    // glfwSetKeyCallback(window, keyCallback);
 }
 
 //compile new shader file  (注意使用绝对路径！)
@@ -390,6 +406,10 @@ void Renderer::createLogicalDevice() {
     //第二个参数是队列族的下标，第三个参数是该队列族中的对应队列下标，两者暂时先设置为一样的值
     vkGetDeviceQueue(device, vulkanDevice->queueFamilyIndices.graphics, 0, &graphicsQueue);
     vkGetDeviceQueue(device, vulkanDevice->queueFamilyIndices.graphics, 0, &presentQueue);
+
+    //初始化clear color
+    clearValues[0].color        = {{.1f, .1f, .1f, 1.0f}};
+    clearValues[1].depthStencil = {1.0f, 0};
 }
 
 void Renderer::setDeviceEnabledFeatures() {
@@ -405,7 +425,7 @@ void Renderer::setDeviceEnabledExtensions() {
 // 初始化swapchain数据，连接instance,device等，获取queue和format
 void Renderer::initSwapChain() {
     swapchain.connect(instance, physicalDevice, device);
-    swapchain.initSurfaceAndQueue(surface, window);     // 里面有对format的选择，目前选择的是RGBA_SRGB(更亮)，RGBA_NORM的话会变暗
+    swapchain.initSurfaceAndQueue(surface, window);// 里面有对format的选择，目前选择的是RGBA_SRGB(更亮)，RGBA_NORM的话会变暗
 }
 
 // 创建与重建swapChain对象
@@ -447,7 +467,10 @@ void Renderer::createCommandPool() {
 
 void Renderer::createCommandBuffers() {
     // Create one command buffer for each swap chain image and reuse for rendering
-    drawCmdBuffers.resize(swapchain.imageCount);
+    // drawCmdBuffers.resize(swapchain.imageCount);
+
+    // 改成每帧record一次后，只需要最多帧数个cmdBuffer
+    drawCmdBuffers.resize(MAX_FRAMES_IN_FLIGHT);
 
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -467,11 +490,68 @@ void Renderer::destoryCommandBuffers() {
 /**
 * @brief 绑定beginRenderPass, pipeline, vertexBuffer/indexBuffer, dynamic parts, descriptorsets, 然后draw, 最后endRenderPass
 */
-void Renderer::recordCommandBuffers() {
-    std::array<VkClearValue, 2> clearValues{};//包括两个attachments：color和depth
-    clearValues[0].color        = {{.1f, .1f, .1f, 1.0f}};
-    clearValues[1].depthStencil = {1.0f, 0};
+// void Renderer::recordCommandBuffers() {
+//     std::array<VkClearValue, 2> clearValues{};//包括两个attachments：color和depth
+//     clearValues[0].color        = {{.1f, .1f, .1f, 1.0f}};
+//     clearValues[1].depthStencil = {1.0f, 0};
 
+//     VkRenderPassBeginInfo renderPassBeginInfo = LR::initializers::renderPassBeginInfo();
+//     renderPassBeginInfo.renderPass            = renderPass;
+//     renderPassBeginInfo.renderArea.offset     = {0, 0};
+//     renderPassBeginInfo.renderArea.extent     = swapchain.extent;
+//     renderPassBeginInfo.clearValueCount       = static_cast<uint32_t>(clearValues.size());
+//     renderPassBeginInfo.pClearValues          = clearValues.data();//VK_ATTACHMENT_LOAD_OP_CLEAR使用的颜色
+
+//     // imGui->newFrame();
+//     // imGui->updateBuffers();
+
+//     // 等待前面的commandBuffer结束(to be optimized)
+//     vkDeviceWaitIdle(device);
+
+//     for (int32_t i = 0; i < drawCmdBuffers.size(); ++i) {
+//         VkCommandBufferBeginInfo beginInfo = LR::initializers::commandBufferBeginInfo();
+//         if (vkBeginCommandBuffer(drawCmdBuffers[i], &beginInfo) != VK_SUCCESS)
+//             throw std::runtime_error("failed to begin recording command buffer!");
+
+//         renderPassBeginInfo.framebuffer = swapChainFramebuffers[i];//attachments
+
+//         //录制操作的函数都以vkcmd开头，返回void值，因此录制操作没有检测错误的步骤
+//         vkCmdBeginRenderPass(drawCmdBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+//         vkCmdBindPipeline(drawCmdBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+
+//         VkBuffer     vertexBuffers[] = {vertexBuffer.buffer};
+//         VkDeviceSize offsets[]       = {0};
+//         vkCmdBindVertexBuffers(drawCmdBuffers[i], 0, 1, vertexBuffers, offsets);
+
+//         vkCmdBindIndexBuffer(drawCmdBuffers[i], indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+
+//         //dynamic部分
+//         VkViewport viewport = LR::initializers::viewport(0.f, 0.f, static_cast<float>(swapchain.extent.width), static_cast<float>(swapchain.extent.height), 0.0f, 1.0f);
+//         vkCmdSetViewport(drawCmdBuffers[i], 0, 1, &viewport);
+//         VkRect2D scissor = LR::initializers::rect2D(swapchain.extent.width, swapchain.extent.height, 0, 0);
+//         vkCmdSetScissor(drawCmdBuffers[i], 0, 1, &scissor);
+
+//         //bind descriptor set
+//         vkCmdBindDescriptorSets(drawCmdBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);
+
+//         //第3个参数用于实例渲染，写1表示不这样做；第4个参数定义gl_VertexIndex的最小值；第5个参数用于实例渲染，定义gl_InstanceIndex的最小值
+//         //vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
+//         vkCmdDrawIndexed(drawCmdBuffers[i], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);//使用索引绘制
+
+//         // 绘制ui
+//         imGui->drawFrame(drawCmdBuffers[i]);
+
+//         vkCmdEndRenderPass(drawCmdBuffers[i]);
+
+//         if (vkEndCommandBuffer(drawCmdBuffers[i]) != VK_SUCCESS)
+//             throw std::runtime_error("failed to end recording command buffer!");
+//     }
+// }
+
+/**
+* @brief 绑定beginRenderPass, pipeline, vertexBuffer/indexBuffer, dynamic parts, descriptorsets, 然后draw, 最后endRenderPass
+*/
+void Renderer::recordCommandBuffer(VkCommandBuffer& cmdBuffer, uint32_t imageIndex) {
     VkRenderPassBeginInfo renderPassBeginInfo = LR::initializers::renderPassBeginInfo();
     renderPassBeginInfo.renderPass            = renderPass;
     renderPassBeginInfo.renderArea.offset     = {0, 0};
@@ -479,40 +559,42 @@ void Renderer::recordCommandBuffers() {
     renderPassBeginInfo.clearValueCount       = static_cast<uint32_t>(clearValues.size());
     renderPassBeginInfo.pClearValues          = clearValues.data();//VK_ATTACHMENT_LOAD_OP_CLEAR使用的颜色
 
-    for (int32_t i = 0; i < drawCmdBuffers.size(); ++i) {
-        VkCommandBufferBeginInfo beginInfo = LR::initializers::commandBufferBeginInfo();
-        if (vkBeginCommandBuffer(drawCmdBuffers[i], &beginInfo) != VK_SUCCESS)
-            throw std::runtime_error("failed to begin recording command buffer!");
+    VkCommandBufferBeginInfo beginInfo = LR::initializers::commandBufferBeginInfo();
+    if (vkBeginCommandBuffer(cmdBuffer, &beginInfo) != VK_SUCCESS)
+        throw std::runtime_error("failed to begin recording command buffer!");
 
-        renderPassBeginInfo.framebuffer = swapChainFramebuffers[i];//attachments
+    renderPassBeginInfo.framebuffer = swapChainFramebuffers[imageIndex];//attachments
 
-        //录制操作的函数都以vkcmd开头，返回void值，因此录制操作没有检测错误的步骤
-        vkCmdBeginRenderPass(drawCmdBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
-        vkCmdBindPipeline(drawCmdBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+    //录制操作的函数都以vkcmd开头，返回void值，因此录制操作没有检测错误的步骤
+    vkCmdBeginRenderPass(cmdBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
-        VkBuffer     vertexBuffers[] = {vertexBuffer.buffer};
-        VkDeviceSize offsets[]       = {0};
-        vkCmdBindVertexBuffers(drawCmdBuffers[i], 0, 1, vertexBuffers, offsets);
+    VkBuffer     vertexBuffers[] = {vertexBuffer.buffer};
+    VkDeviceSize offsets[]       = {0};
+    vkCmdBindVertexBuffers(cmdBuffer, 0, 1, vertexBuffers, offsets);
 
-        vkCmdBindIndexBuffer(drawCmdBuffers[i], indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+    vkCmdBindIndexBuffer(cmdBuffer, indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
-        //dynamic部分
-        VkViewport viewport = LR::initializers::viewport(0.f, 0.f, static_cast<float>(swapchain.extent.width), static_cast<float>(swapchain.extent.height), 0.0f, 1.0f);
-        vkCmdSetViewport(drawCmdBuffers[i], 0, 1, &viewport);
-        VkRect2D scissor = LR::initializers::rect2D(swapchain.extent.width, swapchain.extent.height, 0, 0);
-        vkCmdSetScissor(drawCmdBuffers[i], 0, 1, &scissor);
+    //dynamic部分
+    VkViewport viewport = LR::initializers::viewport(0.f, 0.f, static_cast<float>(swapchain.extent.width), static_cast<float>(swapchain.extent.height), 0.0f, 1.0f);
+    vkCmdSetViewport(cmdBuffer, 0, 1, &viewport);
+    VkRect2D scissor = LR::initializers::rect2D(swapchain.extent.width, swapchain.extent.height, 0, 0);
+    vkCmdSetScissor(cmdBuffer, 0, 1, &scissor);
 
-        //bind descriptor set
-        vkCmdBindDescriptorSets(drawCmdBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);
+    //bind descriptor set
+    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);
 
-        //第3个参数用于实例渲染，写1表示不这样做；第4个参数定义gl_VertexIndex的最小值；第5个参数用于实例渲染，定义gl_InstanceIndex的最小值
-        //vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
-        vkCmdDrawIndexed(drawCmdBuffers[i], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);//使用索引绘制
-        vkCmdEndRenderPass(drawCmdBuffers[i]);
+    //第3个参数用于实例渲染，写1表示不这样做；第4个参数定义gl_VertexIndex的最小值；第5个参数用于实例渲染，定义gl_InstanceIndex的最小值
+    //vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
+    vkCmdDrawIndexed(cmdBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);//使用索引绘制
 
-        if (vkEndCommandBuffer(drawCmdBuffers[i]) != VK_SUCCESS)
-            throw std::runtime_error("failed to end recording command buffer!");
-    }
+    // 绘制ui
+    imGui->drawFrame(cmdBuffer, currentFrame);
+
+    vkCmdEndRenderPass(cmdBuffer);
+
+    if (vkEndCommandBuffer(cmdBuffer) != VK_SUCCESS)
+        throw std::runtime_error("failed to end recording command buffer!");
 }
 
 void Renderer::createDepthResources() {
@@ -763,6 +845,15 @@ void Renderer::createRenderPass() {
         throw std::runtime_error("failed to create render pass!");
 }
 
+void Renderer::setupImGUI() {
+    imGui = new LR::ImGUI(this);
+    imGui->init(static_cast<float>(SCR_WIDTH), static_cast<float>(SCR_HEIGHT));
+    imGui->initResources(renderPass, graphicsQueue, static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT));
+
+    // // 安装imgui glfw call backs
+    // ImGui_ImplGlfw_InitForVulkan(window, true);
+}
+
 //为swapchain中的所有image对应的imageview(attachment)创建framebuffer
 void Renderer::createFramebuffers() {
     swapChainFramebuffers.resize(swapchain.imageCount);
@@ -870,6 +961,46 @@ void Renderer::updateUniformBuffer(uint32_t currentImage) {
     ubo.view       = camera.matrices.view;
     ubo.projection = camera.matrices.perspective;
     uniformBuffers[currentImage].copyFrom(&ubo, sizeof(ShaderData));
+}
+
+void Renderer::updateImGUI(float deltaTime) {
+    ImGuiIO& io    = ImGui::GetIO();
+    io.DisplaySize = ImVec2(static_cast<float>(SCR_WIDTH), static_cast<float>(SCR_HEIGHT));
+    io.DeltaTime   = deltaTime;
+
+    // handle window input(注意鼠标被捕获的时候不被imgui使用)
+    if (!camera.enterCam) {
+        // mouse
+        io.WantCaptureMouse = true;
+        io.MousePos         = ImVec2(static_cast<float>(camera.mouse.x), static_cast<float>(camera.mouse.y));
+        io.MouseDown[0]     = camera.mouse.left;
+        io.MouseDown[1]     = camera.mouse.right;
+        io.MouseDown[2]     = camera.mouse.middle;
+        // keyboard
+        io.WantCaptureKeyboard = true;
+
+    } else {
+        // mouse
+        io.WantCaptureMouse = false;
+        // keyboard
+        io.WantCaptureKeyboard = false;
+    }
+
+    imGui->newFrame();
+    imGui->updateBuffers(currentFrame);
+
+    //-----------------------------------------------------------------------------(针对pre record，暂时放弃)
+    // 判断窗口是否在被拖动或调整大小(悬停+拖拽)
+    // ImGuiContext& g        = *GImGui;
+    // bool          resize   = (g.MovingWindow != nullptr);
+    // bool          dragging = ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow) && ImGui::IsMouseDragging(0);// 0代表left
+
+    // 开始新的一帧(同时如果窗口状态有变化，重新recordCmdBuffer，因为里面的draw记录的是之前的状态)
+    // imGui->newFrame();
+    // if (imGui->updateBuffers(fence) || dragging || resize) {
+    // if (imGui->updateBuffers(fence) || dragging) {
+    //     recordCommandBuffers();
+    // }
 }
 
 void Renderer::createTextureImage() {
@@ -1276,7 +1407,7 @@ VkShaderModule Renderer::createShaderModule(const std::vector<char>& code) {
 }
 
 void Renderer::drawFrame() {
-    //等待上次该个framebuffer对应的gpu操作结束(多个framebuffer一起执行)
+    //等待上次该个framebuffer对应的gpu操作结束，从而使得这帧要使用的所有资源可用(多个framebuffer一起执行)
     vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);//true：对于所有fences而言；第四个参数：time out
 
     // per-frame time logic
@@ -1298,12 +1429,13 @@ void Renderer::drawFrame() {
     // (写在这里是为了防止上面out_of_date更改窗口后直接返回，然后下次执行时导致的fence产生死锁)
     vkResetFences(device, 1, &inFlightFences[currentFrame]);//fence需要手动reset
 
-    //recording the command buffer
-    // vkResetCommandBuffer(drawCmdBuffers[currentFrame], 0);//0表示不做其他操作
-    // recordCommandBuffer(drawCmdBuffers[currentFrame], imageIndex);
-
     camera.Tick(deltaTime);
     updateUniformBuffer(currentFrame);
+    updateImGUI(deltaTime);// 包括第一次NewFrame
+
+    //recording the command buffer per frame
+    vkResetCommandBuffer(drawCmdBuffers[currentFrame], 0);//0表示不做其他操作
+    recordCommandBuffer(drawCmdBuffers[currentFrame], imageIndex);
 
     //submit command buffer
     VkSubmitInfo         submitInfo       = LR::initializers::submitInfo();
@@ -1315,7 +1447,7 @@ void Renderer::drawFrame() {
 
     // submitInfo.pCommandBuffers    = &drawCmdBuffers[currentFrame];
     submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers    = &drawCmdBuffers[imageIndex];
+    submitInfo.pCommandBuffers    = &drawCmdBuffers[currentFrame];
 
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores    = &renderFinishedSemaphores[currentFrame];//指定渲染结束后标记哪些semaphore
@@ -1338,6 +1470,8 @@ void Renderer::drawFrame() {
 
 //手动创建的都需要destroy，这里的顺序有待理解
 void Renderer::cleanup() {
+    delete imGui;
+
     // clean up swapchain & images(automatically) & views & surface
     cleanupSwapChain();
 
@@ -1428,9 +1562,9 @@ void Renderer::recreateSwapChain() {
     createFramebuffers();
 
     // Command buffers need to be recreated as they may store references to the recreated frame buffer
-    destoryCommandBuffers();
-    createCommandBuffers();
-    recordCommandBuffers();
+    // destoryCommandBuffers();
+    // createCommandBuffers();
+    // recordCommandBuffers();
 
     // // SRS - Recreate fences in case number of swapchain images has changed on resize (?)
     // for(auto& fence : inFlightFences)
@@ -1439,8 +1573,12 @@ void Renderer::recreateSwapChain() {
 
     vkDeviceWaitIdle(device);
 
-    //设置新的camera的perspective矩阵
+    // 设置新的camera的perspective矩阵
     camera.updatePerspectiveMatrix(camera.fov_y, static_cast<float>(width) / height, camera.zNear, camera.zFar);
+
+    // 更新ui大小
+    ImGuiIO& io    = ImGui::GetIO();
+    io.DisplaySize = ImVec2((float)(width), (float)(height));
 }
 
 // VkSampleCountFlagBits Renderer::getMaxUsableSampleCount() {
@@ -1472,6 +1610,23 @@ void processInput(GLFWwindow* window) {
         glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
         camera.enterCam = false;
     }
+
+    // 更新鼠标坐标
+    glfwGetCursorPos(window, &camera.mouse.x, &camera.mouse.y);
+
+    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS)
+        camera.mouse.left = true;
+    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS)
+        camera.mouse.right = true;
+    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS)
+        camera.mouse.middle = true;
+
+    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_RELEASE)
+        camera.mouse.left = false;
+    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_RELEASE)
+        camera.mouse.right = false;
+    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_RELEASE)
+        camera.mouse.middle = false;
 
     //按f进入屏幕
     if (glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS) {

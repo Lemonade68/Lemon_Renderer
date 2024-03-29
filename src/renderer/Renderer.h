@@ -37,9 +37,7 @@
 #include "base/VulkanTexture.h"
 #include "base/VulkanSwapChain.h"
 #include "base/VulkanFrameBuffer.hpp"
-
-#include "imgui.h"
-#include "imgui_internal.h"
+#include "base/UI.h"
 
 #ifdef NDEBUG
 const bool enableValidationLayers = false;
@@ -107,6 +105,11 @@ namespace std {
     };
 }// namespace std
 
+// 两个头文件相互包含，需要相互前置声明
+namespace LR{
+    class ImGUI;
+}
+
 // Renderer Class
 class Renderer {
 public:
@@ -121,7 +124,7 @@ public:
     Renderer() = default;
     ~Renderer() { cleanup(); }
 
-private:
+public:
     LR::VulkanDevice*        vulkanDevice;// 设置为指针，从而可以控制何时对其销毁，进而触发析构函数
     VkPhysicalDevice         physicalDevice{VK_NULL_HANDLE};
     VkDevice                 device{VK_NULL_HANDLE};
@@ -183,10 +186,18 @@ private:
 
     // bool framebufferResized = false;// 显式处理窗口更改（以防有些电脑不支持自动响应窗口更改）
 
+    std::array<VkClearValue, 2> clearValues{};  //depth & color clear value
+
+    // ui handle
+    LR::ImGUI* imGui;
+
+    // 
+
     // 回滚函数为类的成员时，GLFW并不会使用this指针来指代这个类，因此设置为static函数(不能调用this)
     static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
     static void mouseCallback(GLFWwindow* window, double xpos, double ypos);
     static void scrollCallback(GLFWwindow* window, double xoffset, double yoffset);
+    static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
     // EXT表示extension（非vk核心部分，而是官方拓展，messenger这种的都要加），utils表示utilities（工具）
     static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
         VkDebugUtilsMessageSeverityFlagBitsEXT      messageSeverity,// 信息重要性
@@ -223,6 +234,7 @@ private:
         createDepthResources();
         createRenderPass();
         createFramebuffers();
+        setupImGUI();
 
         // correspond to VulkanExample::prepare，渲染不同的场景时的独特设置
         loadModel();
@@ -233,12 +245,15 @@ private:
         setupDescriptors();
         createGraphicsPipeline();
         // createColorResources();//for multisample
-        recordCommandBuffers();
+        
+        // 改成每帧record一次
+        // recordCommandBuffers();
     }
 
     // receiving input & draw frames
     void mainLoop() {
         while (!glfwWindowShouldClose(window)) {
+            // 交由程序进行输入的处理
             processInput(window);
             glfwPollEvents();
             drawFrame();
@@ -280,11 +295,14 @@ private:
     void           recreateSwapChain();
     void           createFramebuffers();
     void           createRenderPass();
+    void           setupImGUI();
+    void           updateImGUI(float deltaTime);    // 交由Imgui进行输入处理
     void           createGraphicsPipeline();
     void           createCommandPool();
     void           createCommandBuffers();
     void           destoryCommandBuffers();
-    void           recordCommandBuffers();
+    // void           recordCommandBuffers();  // 用于初始设定好cmdBuffers，然后需要时再更新，不然就复用
+    void           recordCommandBuffer(VkCommandBuffer& cmdBuffer, uint32_t imageIndex);
     VkShaderModule createShaderModule(const std::vector<char>& code);// 创建shader module的helper function
     void           createSyncObjects();
     void           createVertexBuffer();

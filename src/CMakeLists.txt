@@ -115,10 +115,13 @@ set(IMGUI_FILES
     ${IMGUI_DIR}/imgui_internal.h
     ${IMGUI_DIR}/imstb_rectpack.h
     ${IMGUI_DIR}/imstb_textedit.h
-    ${IMGUI_DIR}/imstb_truetype.h)
+    ${IMGUI_DIR}/imstb_truetype.h
+    ${IMGUI_DIR}/examples/imgui_impl_glfw.h
+    ${IMGUI_DIR}/examples/imgui_impl_glfw.cpp)
 
 add_library(imgui STATIC ${IMGUI_FILES})
 target_include_directories(imgui PUBLIC ${IMGUI_DIR})
+# target_include_directories(imgui PUBLIC ${IMGUI_DIR} ${IMGUI_DIR}/backends)
 
 add_executable(${NAME} ${SOURCE_FILE})
 target_include_directories(${NAME} PUBLIC ${HEADER_FILE})
