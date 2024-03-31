@@ -123,6 +123,13 @@ add_library(imgui STATIC ${IMGUI_FILES})
 target_include_directories(imgui PUBLIC ${IMGUI_DIR})
 # target_include_directories(imgui PUBLIC ${IMGUI_DIR} ${IMGUI_DIR}/backends)
 
+# tinygltf
+set(TINYGLTF_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../external/tinygltf)
+add_library(tinygltf INTERFACE)
+target_sources(tinygltf INTERFACE ${TINYGLTF_DIR}/tiny_gltf.h ${TINYGLTF_DIR}/json.hpp)
+target_include_directories(tinygltf INTERFACE ${TINYGLTF_DIR})
+
+
 add_executable(${NAME} ${SOURCE_FILE})
 target_include_directories(${NAME} PUBLIC ${HEADER_FILE})
-target_link_libraries(${NAME} ${Vulkan_LIBRARY} ${glfw_LIBRARY} ktx imgui)
+target_link_libraries(${NAME} ${Vulkan_LIBRARY} ${glfw_LIBRARY} ktx imgui tinygltf)

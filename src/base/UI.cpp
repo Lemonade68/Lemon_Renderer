@@ -97,8 +97,14 @@ namespace LR {
         // Create font texture
         unsigned char* fontData;
         int            texWidth, texHeight;
+        const std::string filename = "../../../assets/Roboto-Medium.ttf";
+        io.Fonts->AddFontFromFileTTF(filename.c_str(), 16.0f * uiSettings.scale);
         io.Fonts->GetTexDataAsRGBA32(&fontData, &texWidth, &texHeight);
         VkDeviceSize uploadSize = texWidth * texHeight * 4 * sizeof(char);
+
+        //SRS - Set ImGui style scale factor to handle retina and other HiDPI displays (same as font scaling above)
+        ImGuiStyle& style = ImGui::GetStyle();
+        style.ScaleAllSizes(uiSettings.scale);
 
         //SRS - Get Vulkan device driver information if available, use later for display
         if (device->extensionSupported(VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME)) {
@@ -109,7 +115,7 @@ namespace LR {
             vkGetPhysicalDeviceProperties2(device->physicalDevice, &deviceProperties2);
         }
 
-        // Create target image for copy
+        // Create target font image for copy
         VkImageCreateInfo imageInfo = LR::initializers::imageCreateInfo();
         imageInfo.imageType         = VK_IMAGE_TYPE_2D;
         imageInfo.format            = VK_FORMAT_R8G8B8A8_UNORM;
