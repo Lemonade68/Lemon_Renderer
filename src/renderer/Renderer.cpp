@@ -1,5 +1,7 @@
 #include "Renderer.h"
+#include "base/UI.h"
 
+// for header-only libraries, we need to have define XXX_IMPLEMENTATION to avoid "Already defined" problems（且所有.cpp中只需要写一次）
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
 
@@ -559,6 +561,9 @@ void Renderer::recordCommandBuffer(VkCommandBuffer& cmdBuffer, uint32_t imageInd
     renderPassBeginInfo.clearValueCount       = static_cast<uint32_t>(clearValues.size());
     renderPassBeginInfo.pClearValues          = clearValues.data();//VK_ATTACHMENT_LOAD_OP_CLEAR使用的颜色
 
+    VkViewport viewport = LR::initializers::viewport(0.f, 0.f, static_cast<float>(swapchain.extent.width), static_cast<float>(swapchain.extent.height), 0.0f, 1.0f);
+    VkRect2D   scissor  = LR::initializers::rect2D(swapchain.extent.width, swapchain.extent.height, 0, 0);
+
     VkCommandBufferBeginInfo beginInfo = LR::initializers::commandBufferBeginInfo();
     if (vkBeginCommandBuffer(cmdBuffer, &beginInfo) != VK_SUCCESS)
         throw std::runtime_error("failed to begin recording command buffer!");
@@ -567,26 +572,27 @@ void Renderer::recordCommandBuffer(VkCommandBuffer& cmdBuffer, uint32_t imageInd
 
     //录制操作的函数都以vkcmd开头，返回void值，因此录制操作没有检测错误的步骤
     vkCmdBeginRenderPass(cmdBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
-    vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
-    VkBuffer     vertexBuffers[] = {vertexBuffer.buffer};
-    VkDeviceSize offsets[]       = {0};
-    vkCmdBindVertexBuffers(cmdBuffer, 0, 1, vertexBuffers, offsets);
-
-    vkCmdBindIndexBuffer(cmdBuffer, indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+    // 全部由gltfScene来设置
+    // vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+    // VkBuffer     vertexBuffers[] = {vertexBuffer.buffer};
+    // VkDeviceSize offsets[]       = {0};
+    // vkCmdBindVertexBuffers(cmdBuffer, 0, 1, vertexBuffers, offsets);
+    // vkCmdBindIndexBuffer(cmdBuffer, indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
     //dynamic部分
-    VkViewport viewport = LR::initializers::viewport(0.f, 0.f, static_cast<float>(swapchain.extent.width), static_cast<float>(swapchain.extent.height), 0.0f, 1.0f);
     vkCmdSetViewport(cmdBuffer, 0, 1, &viewport);
-    VkRect2D scissor = LR::initializers::rect2D(swapchain.extent.width, swapchain.extent.height, 0, 0);
     vkCmdSetScissor(cmdBuffer, 0, 1, &scissor);
 
-    //bind descriptor set
+    // Bind scene matrices descriptor to set 0 (set 1在scene的draw call里面)
     vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);
 
     //第3个参数用于实例渲染，写1表示不这样做；第4个参数定义gl_VertexIndex的最小值；第5个参数用于实例渲染，定义gl_InstanceIndex的最小值
     //vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
-    vkCmdDrawIndexed(cmdBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);//使用索引绘制
+    // vkCmdDrawIndexed(cmdBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);//使用索引绘制
+
+    // draw scene
+    glTFScene->draw(cmdBuffer, pipelineLayout);
 
     // 绘制ui
     imGui->drawFrame(cmdBuffer, currentFrame);
@@ -609,7 +615,8 @@ void Renderer::createDepthResources() {
 
 VkFormat Renderer::findDepthFormat() {
     return findSupportedFormat(
-        {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT},
+        // {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT},
+        {VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D16_UNORM_S8_UINT},
         VK_IMAGE_TILING_OPTIMAL,
         VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
 }
@@ -879,7 +886,12 @@ void Renderer::createFramebuffers() {
     }
 }
 
-void Renderer::loadModel() {
+void Renderer::loadAssets() {
+    // loadOBJModel();
+    loadGLTFFile("../../../assets/models/sponza/sponza.gltf");
+}
+
+void Renderer::loadOBJModel() {
     tinyobj::attrib_t             attrib;//包含vertices, normals, texcoords
     std::vector<tinyobj::shape_t> shapes;//包含separate objects & their faces
     //一个face包含对应的顶点，顶点中包含在attrib中的indices
@@ -913,6 +925,116 @@ void Renderer::loadModel() {
             //indices.push_back(indices.size());		//简单自增（从0开始）
         }
     }
+}
+
+// needs to be customized
+void Renderer::loadGLTFFile(std::string filename) {
+    glTFScene = new LR::VulkanglTFScene();
+
+    tinygltf::Model glTFInput;
+	tinygltf::TinyGLTF gltfContext;
+	std::string error, warning;
+
+	this->device = device;
+
+	bool fileLoaded = gltfContext.LoadASCIIFromFile(&glTFInput, &error, &warning, filename);
+
+	// Pass some Vulkan resources required for setup and rendering to the glTF model loading class
+	glTFScene->vulkanDevice = vulkanDevice;
+	glTFScene->copyQueue    = graphicsQueue;
+
+	size_t pos = filename.find_last_of('/');
+	glTFScene->path = filename.substr(0, pos);
+
+	std::vector<uint32_t> indexBuffer;
+	std::vector<LR::VulkanglTFScene::Vertex> vertexBuffer;
+
+	if (fileLoaded) {
+		glTFScene->loadImages(glTFInput);
+		glTFScene->loadMaterials(glTFInput);
+		glTFScene->loadTextures(glTFInput);
+		const tinygltf::Scene& scene = glTFInput.scenes[0];
+		for (size_t i = 0; i < scene.nodes.size(); i++) {
+			const tinygltf::Node node = glTFInput.nodes[scene.nodes[i]];
+			glTFScene->loadNode(node, glTFInput, nullptr, indexBuffer, vertexBuffer);
+		}
+	}
+	else {
+		throw std::runtime_error("Could not open the glTF file.\n\nMake sure the assets submodule has been checked out and is up-to-date.");
+		return;
+	}
+
+	// Create and upload vertex and index buffer
+	// We will be using one single vertex buffer and one single index buffer for the whole glTF scene
+	// Primitives (of the glTF model) will then index into these using index offsets
+
+	size_t vertexBufferSize = vertexBuffer.size() * sizeof(LR::VulkanglTFScene::Vertex);
+	size_t indexBufferSize = indexBuffer.size() * sizeof(uint32_t);
+	glTFScene->indices.count = static_cast<uint32_t>(indexBuffer.size());
+
+	struct StagingBuffer {
+		VkBuffer buffer;
+		VkDeviceMemory memory;
+	} vertexStaging, indexStaging;
+
+	// Create host visible staging buffers (source)
+	VK_CHECK(vulkanDevice->createBuffer(
+		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		vertexBufferSize,
+		&vertexStaging.buffer,
+		&vertexStaging.memory,
+		vertexBuffer.data()));
+	// Index data
+	VK_CHECK(vulkanDevice->createBuffer(
+		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		indexBufferSize,
+		&indexStaging.buffer,
+		&indexStaging.memory,
+		indexBuffer.data()));
+
+	// Create device local buffers (target)
+	VK_CHECK(vulkanDevice->createBuffer(
+		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		vertexBufferSize,
+		&glTFScene->vertices.buffer,
+		&glTFScene->vertices.memory));
+	VK_CHECK(vulkanDevice->createBuffer(
+		VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		indexBufferSize,
+		&glTFScene->indices.buffer,
+		&glTFScene->indices.memory));
+
+	// Copy data from staging buffers (host) do device local buffer (gpu)
+	VkCommandBuffer copyCmd = vulkanDevice->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+	VkBufferCopy copyRegion = {};
+
+	copyRegion.size = vertexBufferSize;
+	vkCmdCopyBuffer(
+		copyCmd,
+		vertexStaging.buffer,
+		glTFScene->vertices.buffer,
+		1,
+		&copyRegion);
+
+	copyRegion.size = indexBufferSize;
+	vkCmdCopyBuffer(
+		copyCmd,
+		indexStaging.buffer,
+		glTFScene->indices.buffer,
+		1,
+		&copyRegion);
+
+	vulkanDevice->flushCommandBuffer(copyCmd, graphicsQueue, true);
+
+	// Free staging resources
+	vkDestroyBuffer(device, vertexStaging.buffer, nullptr);
+	vkFreeMemory(device, vertexStaging.memory, nullptr);
+	vkDestroyBuffer(device, indexStaging.buffer, nullptr);
+	vkFreeMemory(device, indexStaging.memory, nullptr);
 }
 
 void Renderer::createVertexBuffer() {
@@ -957,9 +1079,10 @@ void Renderer::updateUniformBuffer(uint32_t currentImage) {
     float       time        = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
     ShaderData ubo{};
-    ubo.model      = glm::mat4(1.f);
+    // ubo.model      = glm::mat4(1.f);     //scene绘制这里model用的是push_constant来传入的
     ubo.view       = camera.matrices.view;
     ubo.projection = camera.matrices.perspective;
+    ubo.viewPos    = glm::vec4(camera.position, 1.0f);
     uniformBuffers[currentImage].copyFrom(&ubo, sizeof(ShaderData));
 }
 
@@ -978,6 +1101,7 @@ void Renderer::updateImGUI(float deltaTime) {
         io.MouseDown[2]     = camera.mouse.middle;
         // keyboard
         io.WantCaptureKeyboard = true;
+        // todo
 
     } else {
         // mouse
@@ -1261,44 +1385,165 @@ void Renderer::copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width,
 }
 
 void Renderer::setupDescriptors() {
+    // // 1. pool
+    // std::vector<VkDescriptorPoolSize> poolSizes = {
+    //     LR::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT)),
+    //     LR::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT))};
+    // // maxSet = 2：每个Frame_in_flight分配一个descriptorset，里面包含两部分:uniform buffer 和 image sampler
+    // VkDescriptorPoolCreateInfo descriptorPoolInfo = LR::initializers::descriptorPoolCreateInfo(poolSizes, static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT));
+    // VK_CHECK(vkCreateDescriptorPool(device, &descriptorPoolInfo, nullptr, &descriptorPool));
+
+    // // 2. layout
+    // std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
+    //     LR::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0),
+    //     LR::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 1)};
+    // VkDescriptorSetLayoutCreateInfo descriptorLayoutCI = LR::initializers::descriptorSetLayoutCreateInfo(setLayoutBindings);
+    // VK_CHECK(vkCreateDescriptorSetLayout(device, &descriptorLayoutCI, nullptr, &descriptorSetLayout));
+
+    // // 3. set
+    // std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayout);
+    // VkDescriptorSetAllocateInfo        allocInfo = LR::initializers::descriptorSetAllocateInfo(descriptorPool, layouts.data(), static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT));
+    // descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
+    // VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, descriptorSets.data()));
+
+    // // update descriptorsets data
+    // VkDescriptorImageInfo descriptorImageInfo{};
+    // descriptorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    // descriptorImageInfo.imageView   = textureImageView;
+    // descriptorImageInfo.sampler     = textureSampler;
+    // for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+    //     std::vector<VkWriteDescriptorSet> writeDescriptorSets = {
+    //         LR::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0, &uniformBuffers[i].descriptorInfo),
+    //         LR::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, &descriptorImageInfo)};
+    //     vkUpdateDescriptorSets(device, static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, nullptr);
+    // }
+
+    // scene 版本：
     // 1. pool
     std::vector<VkDescriptorPoolSize> poolSizes = {
-        LR::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT)),
-        LR::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT))};
-    // maxSet = 2：每个Frame_in_flight分配一个descriptorset，里面包含两部分:uniform buffer 和 image sampler
-    VkDescriptorPoolCreateInfo descriptorPoolInfo = LR::initializers::descriptorPoolCreateInfo(poolSizes, static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT));
+        LR::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT)),                   // 看看是不是可以改成1
+        LR::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, static_cast<uint32_t>(glTFScene->materials.size()) * 2)};//size个sets，每个set有两个descriptor(color map & normal map)
+    // 每个Frame_in_flight的matrices分配一个descriptorset，每个image/texture分配一个descriptorset
+    const uint32_t             maxSetCount        = static_cast<uint32_t>(glTFScene->images.size()) + 2;
+    VkDescriptorPoolCreateInfo descriptorPoolInfo = LR::initializers::descriptorPoolCreateInfo(poolSizes, maxSetCount);
     VK_CHECK(vkCreateDescriptorPool(device, &descriptorPoolInfo, nullptr, &descriptorPool));
 
-    // 2. layout
+    // 2. setting layout(2 parts : matrices & material textures)
+    //  matrices 的 layout
     std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
-        LR::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0),
-        LR::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 1)};
-    VkDescriptorSetLayoutCreateInfo descriptorLayoutCI = LR::initializers::descriptorSetLayoutCreateInfo(setLayoutBindings);
-    VK_CHECK(vkCreateDescriptorSetLayout(device, &descriptorLayoutCI, nullptr, &descriptorSetLayout));
+        LR::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0)};
+    VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI = LR::initializers::descriptorSetLayoutCreateInfo(setLayoutBindings.data(), static_cast<uint32_t>(setLayoutBindings.size()));
+    VK_CHECK(vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCI, nullptr, &descriptorSetLayouts.matrices));
+
+    // textures 的 layout
+    setLayoutBindings = {
+        // Color map
+        LR::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 0),
+        // Normal map
+        LR::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 1),
+    };
+    descriptorSetLayoutCI.pBindings    = setLayoutBindings.data();
+    descriptorSetLayoutCI.bindingCount = 2;
+    VK_CHECK(vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCI, nullptr, &descriptorSetLayouts.textures));
 
     // 3. set
-    std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayout);
-    VkDescriptorSetAllocateInfo        allocInfo = LR::initializers::descriptorSetAllocateInfo(descriptorPool, layouts.data(), static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT));
+    // set for matrices
     descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
-    VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, descriptorSets.data()));
-
-    // update descriptorsets data
-    VkDescriptorImageInfo descriptorImageInfo{};
-    descriptorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    descriptorImageInfo.imageView   = textureImageView;
-    descriptorImageInfo.sampler     = textureSampler;
+    // 这里不知道为什么按照上面的写法去写会导致第二个descriptorSet的类型为 COMBINED_IMAGE_SAMPLER
+    VkDescriptorSetAllocateInfo allocInfo = LR::initializers::descriptorSetAllocateInfo(descriptorPool, &descriptorSetLayouts.matrices, 1);
+    VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, &descriptorSets[0]));
+    allocInfo = LR::initializers::descriptorSetAllocateInfo(descriptorPool, &descriptorSetLayouts.matrices, 1);
+    VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, &descriptorSets[1]));
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
         std::vector<VkWriteDescriptorSet> writeDescriptorSets = {
-            LR::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0, &uniformBuffers[i].descriptorInfo),
-            LR::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, &descriptorImageInfo)};
+            LR::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0, &uniformBuffers[i].descriptorInfo)};
         vkUpdateDescriptorSets(device, static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, nullptr);
     }
+
+
+    // sets for textures
+    for (auto& material : glTFScene->materials) {
+		const VkDescriptorSetAllocateInfo allocInfo = LR::initializers::descriptorSetAllocateInfo(descriptorPool, &descriptorSetLayouts.textures, 1);
+		VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, &material.descriptorSet));
+		VkDescriptorImageInfo colorMap = glTFScene->getTextureDescriptor(material.baseColorTextureIndex);
+		VkDescriptorImageInfo normalMap = glTFScene->getTextureDescriptor(material.normalTextureIndex);
+		std::vector<VkWriteDescriptorSet> writeDescriptorSets = {
+			LR::initializers::writeDescriptorSet(material.descriptorSet, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 0, &colorMap),
+			LR::initializers::writeDescriptorSet(material.descriptorSet, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, &normalMap),
+		};
+		vkUpdateDescriptorSets(device, static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, nullptr);
+	}
 }
 
-void Renderer::createGraphicsPipeline() {
+
+// 之前使用的函数
+// void Renderer::createGraphicsPipeline() {
+//      //* programmable stages(vertex/fragment shader)
+//     auto vertShaderCode = readFile("../../../shaders/vert.spv");
+//     auto fragShaderCode = readFile("../../../shaders/frag.spv");
+
+//     VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
+//     VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
+
+//     VkPipelineShaderStageCreateInfo vertShaderStageInfo{VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+//     vertShaderStageInfo.stage  = VK_SHADER_STAGE_VERTEX_BIT;
+//     vertShaderStageInfo.module = vertShaderModule;
+//     vertShaderStageInfo.pName  = "main";//入口函数(实际invoke(调用)的函数)
+//     //vertShaderStageInfo.pSpecializationInfo = nullptr;		//optional 但重要(看教程)
+
+//     VkPipelineShaderStageCreateInfo fragShaderStageInfo{VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+//     fragShaderStageInfo.stage  = VK_SHADER_STAGE_FRAGMENT_BIT;
+//     fragShaderStageInfo.module = fragShaderModule;
+//     fragShaderStageInfo.pName  = "main";
+
+//     std::array<VkPipelineShaderStageCreateInfo, 2> shaderStages{vertShaderStageInfo, fragShaderStageInfo};
+
+//     //* fixed-function stages
+//     //dynamic state(可以在绘制时动态改变的量，不用重新设置pipeline来改变)
+//     std::vector<VkDynamicState>      dynamicStateEnables = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+//     VkPipelineDynamicStateCreateInfo dynamicState        = LR::initializers::pipelineDynamicStateCreateInfo(dynamicStateEnables);
+
+//     auto                                 bindingDescritions    = Vertex::getBindingDescriptions();
+//     auto                                 attributeDescriptions = Vertex::getAttributeDescriptions();
+//     VkPipelineVertexInputStateCreateInfo vertexInputState      = LR::initializers::pipelineVertexInputStateCreateInfo(bindingDescritions, attributeDescriptions);
+
+//     VkPipelineInputAssemblyStateCreateInfo inputAssemblyState = LR::initializers::pipelineInputAssemblyStateCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, 0, VK_FALSE);
+//     VkPipelineViewportStateCreateInfo viewportState = LR::initializers::pipelineViewportStateCreateInfo(1, 1, 0);
+//     VkPipelineRasterizationStateCreateInfo rasterizationState = LR::initializers::pipelineRasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_COUNTER_CLOCKWISE, 0);
+//     VkPipelineMultisampleStateCreateInfo multisampleState = LR::initializers::pipelineMultisampleStateCreateInfo(VK_SAMPLE_COUNT_1_BIT, 0);
+//     VkPipelineDepthStencilStateCreateInfo depthStencilState = LR::initializers::pipelineDepthStencilStateCreateInfo(VK_TRUE, VK_TRUE, VK_COMPARE_OP_LESS_OR_EQUAL);
+//     VkPipelineColorBlendAttachmentState blendAttachmentState = LR::initializers::pipelineColorBlendAttachmentState(VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT, VK_FALSE);
+//     VkPipelineColorBlendStateCreateInfo colorBlendState = LR::initializers::pipelineColorBlendStateCreateInfo(1, &blendAttachmentState);
+//     const VkPipelineLayoutCreateInfo pipelineLayoutCI = LR::initializers::pipelineLayoutCreateInfo(&descriptorSetLayout, 1);
+//     VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutCI, nullptr, &pipelineLayout));
+
+//     //创建graphics pipeline
+//     VkGraphicsPipelineCreateInfo pipelineCI = LR::initializers::pipelineCreateInfo(pipelineLayout, renderPass, 0);
+//     pipelineCI.pInputAssemblyState          = &inputAssemblyState;
+//     pipelineCI.pRasterizationState          = &rasterizationState;
+//     pipelineCI.pColorBlendState             = &colorBlendState;
+//     pipelineCI.pMultisampleState            = &multisampleState;
+//     pipelineCI.pViewportState               = &viewportState;
+//     pipelineCI.pDepthStencilState           = &depthStencilState;
+//     pipelineCI.pDynamicState                = &dynamicState;
+//     pipelineCI.stageCount                   = static_cast<uint32_t>(shaderStages.size());
+//     pipelineCI.pStages                      = shaderStages.data();
+//     pipelineCI.pVertexInputState            = &vertexInputState;
+
+//     if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineCI, nullptr, &graphicsPipeline) != VK_SUCCESS)
+//         throw std::runtime_error("failed to create graphics pipeline!");
+
+//     vkDestroyShaderModule(device, vertShaderModule, nullptr);
+//     vkDestroyShaderModule(device, fragShaderModule, nullptr);
+// }
+
+// for scene usage
+void Renderer::createGraphicsPipelines() {
     //* programmable stages(vertex/fragment shader)
-    auto vertShaderCode = readFile("../../../shaders/vert.spv");
-    auto fragShaderCode = readFile("../../../shaders/frag.spv");
+    // auto vertShaderCode = readFile("../../../shaders/vert.spv");
+    // auto fragShaderCode = readFile("../../../shaders/frag.spv");
+    auto vertShaderCode = readFile("../../../shaders/scenevert.spv");
+    auto fragShaderCode = readFile("../../../shaders/scenefrag.spv");
 
     VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
     VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
@@ -1316,15 +1561,38 @@ void Renderer::createGraphicsPipeline() {
 
     std::array<VkPipelineShaderStageCreateInfo, 2> shaderStages{vertShaderStageInfo, fragShaderStageInfo};
 
+    // 先制定pipeline layout
+    // Pipeline layout uses both descriptor sets (set 0 = matrices, set 1 = material)
+    std::array<VkDescriptorSetLayout, 2> setLayouts = { descriptorSetLayouts.matrices, descriptorSetLayouts.textures };
+	VkPipelineLayoutCreateInfo pipelineLayoutCI = LR::initializers::pipelineLayoutCreateInfo(setLayouts.data(), static_cast<uint32_t>(setLayouts.size()));
+    // We will use push constants to push the local matrices of a primitive to the vertex shader(实际是在record的时候由drawNode传入)
+	VkPushConstantRange pushConstantRange = LR::initializers::pushConstantRange(VK_SHADER_STAGE_VERTEX_BIT, sizeof(glm::mat4), 0);
+	// Push constant ranges are part of the pipeline layout
+	pipelineLayoutCI.pushConstantRangeCount = 1;
+	pipelineLayoutCI.pPushConstantRanges = &pushConstantRange;
+    VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutCI, nullptr, &pipelineLayout));
+
     //* fixed-function stages
     //dynamic state(可以在绘制时动态改变的量，不用重新设置pipeline来改变)
     std::vector<VkDynamicState>      dynamicStateEnables = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
     VkPipelineDynamicStateCreateInfo dynamicState        = LR::initializers::pipelineDynamicStateCreateInfo(dynamicStateEnables);
 
-    // vertex input info(后续真正传入vertex数据时更改  --直接传入返回的临时值会出现未赋值的问题)
-    auto                                 bindingDescritions    = Vertex::getBindingDescriptions();
-    auto                                 attributeDescriptions = Vertex::getAttributeDescriptions();
-    VkPipelineVertexInputStateCreateInfo vertexInputState      = LR::initializers::pipelineVertexInputStateCreateInfo(bindingDescritions, attributeDescriptions);
+    // // vertex input info(后续真正传入vertex数据时更改  --直接传入返回的临时值会出现未赋值的问题)
+    // auto                                 bindingDescritions    = Vertex::getBindingDescriptions();
+    // auto                                 attributeDescriptions = Vertex::getAttributeDescriptions();
+    // VkPipelineVertexInputStateCreateInfo vertexInputState      = LR::initializers::pipelineVertexInputStateCreateInfo(bindingDescritions, attributeDescriptions);
+
+    const std::vector<VkVertexInputBindingDescription> vertexInputBindings = {
+		LR::initializers::vertexInputBindingDescription(0, sizeof(LR::VulkanglTFScene::Vertex), VK_VERTEX_INPUT_RATE_VERTEX),
+	};
+	const std::vector<VkVertexInputAttributeDescription> vertexInputAttributes = {
+		LR::initializers::vertexInputAttributeDescription(0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(LR::VulkanglTFScene::Vertex, pos)),
+		LR::initializers::vertexInputAttributeDescription(0, 1, VK_FORMAT_R32G32B32_SFLOAT, offsetof(LR::VulkanglTFScene::Vertex, normal)),
+		LR::initializers::vertexInputAttributeDescription(0, 2, VK_FORMAT_R32G32B32_SFLOAT, offsetof(LR::VulkanglTFScene::Vertex, uv)),
+		LR::initializers::vertexInputAttributeDescription(0, 3, VK_FORMAT_R32G32B32_SFLOAT, offsetof(LR::VulkanglTFScene::Vertex, color)),
+		LR::initializers::vertexInputAttributeDescription(0, 4, VK_FORMAT_R32G32B32_SFLOAT, offsetof(LR::VulkanglTFScene::Vertex, tangent)),
+	};
+	VkPipelineVertexInputStateCreateInfo vertexInputState = LR::initializers::pipelineVertexInputStateCreateInfo(vertexInputBindings, vertexInputAttributes);
 
     // input assembly(针对vertex shader中传入的顶点)  //VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST: 三角形且不复用
     VkPipelineInputAssemblyStateCreateInfo inputAssemblyState = LR::initializers::pipelineInputAssemblyStateCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, 0, VK_FALSE);
@@ -1347,10 +1615,6 @@ void Renderer::createGraphicsPipeline() {
     // color blend state(用上一条来设置)
     VkPipelineColorBlendStateCreateInfo colorBlendState = LR::initializers::pipelineColorBlendStateCreateInfo(1, &blendAttachmentState);
 
-    //* pipeline layout(指定uniform变量需要，后续完善   --已修改)   管线布局
-    const VkPipelineLayoutCreateInfo pipelineLayoutCI = LR::initializers::pipelineLayoutCreateInfo(&descriptorSetLayout, 1);
-    VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutCI, nullptr, &pipelineLayout));
-
     //* render pass(在该函数前已经构造完成)
 
     //创建graphics pipeline
@@ -1366,9 +1630,35 @@ void Renderer::createGraphicsPipeline() {
     pipelineCI.pStages                      = shaderStages.data();
     pipelineCI.pVertexInputState            = &vertexInputState;
 
+
+    // Instead of using a few fixed pipelines, we create one pipeline for each material using the properties of that material
+    for (auto &material : glTFScene->materials) {
+
+		struct MaterialSpecializationData {
+			VkBool32 alphaMask;
+			float alphaMaskCutoff;
+		} materialSpecializationData;
+
+		materialSpecializationData.alphaMask = material.alphaMode == "MASK";
+		materialSpecializationData.alphaMaskCutoff = material.alphaCutOff;
+
+		// POI: Constant fragment shader material parameters will be set using specialization constants
+		std::vector<VkSpecializationMapEntry> specializationMapEntries = {
+			LR::initializers::specializationMapEntry(0, offsetof(MaterialSpecializationData, alphaMask), sizeof(MaterialSpecializationData::alphaMask)),
+			LR::initializers::specializationMapEntry(1, offsetof(MaterialSpecializationData, alphaMaskCutoff), sizeof(MaterialSpecializationData::alphaMaskCutoff)),
+		};
+		VkSpecializationInfo specializationInfo = LR::initializers::specializationInfo(specializationMapEntries, sizeof(materialSpecializationData), &materialSpecializationData);
+		shaderStages[1].pSpecializationInfo = &specializationInfo;
+
+		// For double sided materials, culling will be disabled
+		rasterizationState.cullMode = material.doubleSided ? VK_CULL_MODE_NONE : VK_CULL_MODE_BACK_BIT;
+
+		VK_CHECK(vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineCI, nullptr, &material.pipeline));
+	}
+
     //可以同时创建多个pipelines
-    if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineCI, nullptr, &graphicsPipeline) != VK_SUCCESS)
-        throw std::runtime_error("failed to create graphics pipeline!");
+    // if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineCI, nullptr, &graphicsPipeline) != VK_SUCCESS)
+        // throw std::runtime_error("failed to create graphics pipeline!");
 
     vkDestroyShaderModule(device, vertShaderModule, nullptr);
     vkDestroyShaderModule(device, fragShaderModule, nullptr);
@@ -1471,6 +1761,7 @@ void Renderer::drawFrame() {
 //手动创建的都需要destroy，这里的顺序有待理解
 void Renderer::cleanup() {
     delete imGui;
+    delete glTFScene;
 
     // clean up swapchain & images(automatically) & views & surface
     cleanupSwapChain();
@@ -1483,7 +1774,9 @@ void Renderer::cleanup() {
 
     // destroy descriptor contents
     vkDestroyDescriptorPool(device, descriptorPool, nullptr);
-    vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
+    // vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
+    vkDestroyDescriptorSetLayout(device, descriptorSetLayouts.textures, nullptr);
+    vkDestroyDescriptorSetLayout(device, descriptorSetLayouts.matrices, nullptr);
 
     // destroy uniform buffers, vertex buffer, index buffer
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)

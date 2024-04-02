@@ -1,10 +1,18 @@
 #ifndef IMGUI_VULKAN_UI_H
 #define IMGUI_VULKAN_UI_H
 
-#include "renderer/Renderer.h"
+#include <vector>
+
+// #include "renderer/Renderer.h"
+#include "vulkan.h"
 #include "imgui.h"
 #include "imgui_internal.h"
 #include "imgui/examples/imgui_impl_glfw.h"
+
+#include "base/Camera.h"
+#include "base/VulkanBuffer.h"
+#include "base/VulkanDevice.h"
+
 
 // UI.h 和 Renderer.h相互包含，需要前置声明
 class Renderer;

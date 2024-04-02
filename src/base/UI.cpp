@@ -509,8 +509,8 @@ namespace LR {
                 for (int32_t j = 0; j < cmd_list->CmdBuffer.Size; j++) {
                     const ImDrawCmd* pcmd = &cmd_list->CmdBuffer[j];
                     VkRect2D         scissorRect;
-                    scissorRect.offset.x      = std::max((int32_t)(pcmd->ClipRect.x), 0);
-                    scissorRect.offset.y      = std::max((int32_t)(pcmd->ClipRect.y), 0);
+                    scissorRect.offset.x      = (std::max)((int32_t)(pcmd->ClipRect.x), 0);     // 加上括号来与Visual C++中的全局的宏max区分开来
+                    scissorRect.offset.y      = (std::max)((int32_t)(pcmd->ClipRect.y), 0);
                     scissorRect.extent.width  = (uint32_t)(pcmd->ClipRect.z - pcmd->ClipRect.x);
                     scissorRect.extent.height = (uint32_t)(pcmd->ClipRect.w - pcmd->ClipRect.y);
                     vkCmdSetScissor(commandBuffer, 0, 1, &scissorRect);

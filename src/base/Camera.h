@@ -1,6 +1,7 @@
 #ifndef CAMERA_H
 #define CAMERA_H
 
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE// depth(0,1) in vulkan
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -61,7 +62,7 @@ public:
 public:
     Camera(glm::vec3          _position = glm::vec3(0.f, 0.f, 3.f),
            float              _fov      = 45.f,
-           float              _near     = 0.1f,
+           float              _near     = 0.001f,
            float              _far      = 256.f,
            Camera::CameraType _type     = Camera::CameraType::firstperson);
 
