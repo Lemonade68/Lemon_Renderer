@@ -21,13 +21,14 @@
 #include <chrono>
 #include <unordered_map>
 
-#define GLM_FORCE_RADIANS                 // force using radians
-#define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES// force using align
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE       // depth(0,1) in vulkan
+#define GLM_FORCE_RADIANS// force using radians
+// #define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES// force using align
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE// depth(0,1) in vulkan
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/hash.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 #include "base/Camera.h"
 #include "base/initializer.h"
@@ -37,7 +38,10 @@
 #include "base/VulkanTexture.h"
 #include "base/VulkanSwapChain.h"
 #include "base/VulkanFrameBuffer.hpp"
-#include "base/UI.h"
+// #include "base/UI.h"
+
+// #include "base/VulkanGLTFModel.h"
+#include "base/VulkanGLTFScene.h"
 
 #ifdef NDEBUG
 const bool enableValidationLayers = false;
@@ -79,9 +83,11 @@ struct Vertex {
 // 注意对齐要求(mat4的大小为 4byte*(4行*4列) = 64byte)，使用c++11标准的alignas来保证对齐 —— 比较好的做法：全都显示对齐内存
 struct ShaderData {
     // glm::vec2 foo;		//vec2大小为8byte，导致后面的mat的offset都不为16的整数倍
-    alignas(16) glm::mat4 model;
+    // alignas(16) glm::mat4 model;     //scene这里model用的是push_constant来传入的
     alignas(16) glm::mat4 view;
     alignas(16) glm::mat4 projection;
+    alignas(16) glm::vec4 lightPos = glm::vec4(0.0f, 2.5f, 0.0f, 1.0f);
+    alignas(16) glm::vec4 viewPos;
 };
 
 bool checkValidationLayerSupport();
@@ -105,9 +111,9 @@ namespace std {
     };
 }// namespace std
 
-// 两个头文件相互包含，需要相互前置声明
 namespace LR{
     class ImGUI;
+    class VulkanglTFScene;
 }
 
 // Renderer Class
@@ -151,9 +157,15 @@ public:
     LR::VulkanBuffer vertexBuffer;
     LR::VulkanBuffer indexBuffer;
 
-    VkDescriptorSetLayout        descriptorSetLayout{VK_NULL_HANDLE};
+    // VkDescriptorSetLayout        descriptorSetLayout{VK_NULL_HANDLE};
+    // 设置两种layout：matrices只包含ubo；textures包含sampler(texture & normal)
+    struct descriptorSetLayouts {
+        VkDescriptorSetLayout matrices{VK_NULL_HANDLE};// 所有node都一样，摄像头相关的VP矩阵（M矩阵对于不同的node而言不相同）
+        VkDescriptorSetLayout textures{VK_NULL_HANDLE};// 不同的material不同（绑定的imageview等都不一样）
+    } descriptorSetLayouts;
+
     VkDescriptorPool             descriptorPool{VK_NULL_HANDLE};
-    std::vector<VkDescriptorSet> descriptorSets;
+    std::vector<VkDescriptorSet> descriptorSets;//在scene绘制中专门用来放matrices
 
     // textures等之后添加了gltf以及ktx的时候再换
     VkImage        textureImage{VK_NULL_HANDLE};
@@ -186,12 +198,16 @@ public:
 
     // bool framebufferResized = false;// 显式处理窗口更改（以防有些电脑不支持自动响应窗口更改）
 
-    std::array<VkClearValue, 2> clearValues{};  //depth & color clear value
+    std::array<VkClearValue, 2> clearValues{};//depth & color clear value
 
     // ui handle
     LR::ImGUI* imGui;
 
-    // 
+    // gltfModel Handle
+    // LR::VulkanglTFModel glTFModel;
+
+    // gltfScene Handle
+    LR::VulkanglTFScene* glTFScene;
 
     // 回滚函数为类的成员时，GLFW并不会使用this指针来指代这个类，因此设置为static函数(不能调用this)
     static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
@@ -237,15 +253,17 @@ public:
         setupImGUI();
 
         // correspond to VulkanExample::prepare，渲染不同的场景时的独特设置
-        loadModel();
-        createVertexBuffer();
-        createIndexBuffer();
+        // loadModel();
+        loadAssets();
+        // createVertexBuffer();
+        // createIndexBuffer();
         createUniformBuffers();
-        createTextureImage();//image, view, sampler
+        // createTextureImage();//image, view, sampler
         setupDescriptors();
-        createGraphicsPipeline();
+        // createGraphicsPipeline();
+        createGraphicsPipelines();
         // createColorResources();//for multisample
-        
+
         // 改成每帧record一次
         // recordCommandBuffers();
     }
@@ -279,28 +297,31 @@ public:
     VkCommandBuffer          beginSingleTimeCommands();                           // 分配并开始单次的cmd录制
     void                     endSingleTimeCommands(VkCommandBuffer commandBuffer);// 结束并提交与释放（因为是单次）
     bool                     hasStencilComponent(VkFormat format);
-    void                     loadModel();
+    void                     loadOBJModel();
+    void                     loadGLTFFile(std::string filename);
+    void                     loadAssets();
     VkFormat                 findDepthFormat();
     VkFormat                 findSupportedFormat(const std::vector<VkFormat>& candidates,
                                                  VkImageTiling                tiling,
                                                  VkFormatFeatureFlags         features);
 
-    void           pickPhysicalCard();
-    void           createInstance();
-    void           createLogicalDevice();
-    void           createSurface();
-    void           initSwapChain();
-    void           setupSwapChain();
-    void           cleanupSwapChain();
-    void           recreateSwapChain();
-    void           createFramebuffers();
-    void           createRenderPass();
-    void           setupImGUI();
-    void           updateImGUI(float deltaTime);    // 交由Imgui进行输入处理
-    void           createGraphicsPipeline();
-    void           createCommandPool();
-    void           createCommandBuffers();
-    void           destoryCommandBuffers();
+    void pickPhysicalCard();
+    void createInstance();
+    void createLogicalDevice();
+    void createSurface();
+    void initSwapChain();
+    void setupSwapChain();
+    void cleanupSwapChain();
+    void recreateSwapChain();
+    void createFramebuffers();
+    void createRenderPass();
+    void setupImGUI();
+    void updateImGUI(float deltaTime);// 交由Imgui进行输入处理
+    // void createGraphicsPipeline();
+    void createGraphicsPipelines();//供不同的material使用
+    void createCommandPool();
+    void createCommandBuffers();
+    void destoryCommandBuffers();
     // void           recordCommandBuffers();  // 用于初始设定好cmdBuffers，然后需要时再更新，不然就复用
     void           recordCommandBuffer(VkCommandBuffer& cmdBuffer, uint32_t imageIndex);
     VkShaderModule createShaderModule(const std::vector<char>& code);// 创建shader module的helper function
